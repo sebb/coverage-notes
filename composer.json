@@ -1,0 +1,37 @@
+{
+    "name": "sebb/coverage-notes",
+    "description": "Track and compare PHPUnit code coverage evolution using Git notes without third-party services.",
+    "type": "project",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "sebb"
+        }
+    ],
+    "require": {
+        "php": ">=8.4",
+        "ext-json": "*",
+        "ext-simplexml": "*",
+        "symfony/console": "^8.1",
+        "symfony/process": "^8.1"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^12.5"
+    },
+    "autoload": {
+        "psr-4": {
+            "Sebb\\CoverageNotes\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Sebb\\CoverageNotes\\Tests\\": "tests/"
+        }
+    },
+    "bin": [
+        "bin/coverage-notes"
+    ],
+    "config": {
+        "sort-packages": true
+    }
+}

@@ -1,0 +1,37 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+use Sebb\CoverageNotes\Command\CompareCommand;
+use Sebb\CoverageNotes\Command\HistoryCommand;
+use Sebb\CoverageNotes\Command\RecordCommand;
+use Symfony\Component\Console\Application;
+
+$autoloadPaths = [
+    __DIR__ . '/../vendor/autoload.php',
+    __DIR__ . '/../../../autoload.php',
+];
+
+$loaded = false;
+foreach ($autoloadPaths as $autoloadPath) {
+    if (is_file($autoloadPath)) {
+        require_once $autoloadPath;
+        $loaded = true;
+        break;
+    }
+}
+
+if (!$loaded) {
+    fwrite(STDERR, "Composer autoload.php could not be found. Run 'composer install' first.\n");
+    exit(1);
+}
+
+$application = new Application('coverage-notes', '0.1.0');
+$application->addCommands([
+    new RecordCommand(),
+    new CompareCommand(),
+    new HistoryCommand(),
+]);
+
+exit($application->run());
