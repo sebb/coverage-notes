@@ -73,7 +73,7 @@ jobs:
       - run: composer install --no-interaction --prefer-dist
       - run: vendor/bin/phpunit --coverage-clover=coverage.xml
 
-      - uses: sebb/coverage-notes@v0.1.0
+      - uses: sebb/coverage-notes@v0.2.0
         with:
           clover-file: coverage.xml
           base-branch: main

@@ -98,10 +98,20 @@ runs:
 
         if [ "$PR_COMMENT" = "true" ] && [ -n "$PR_NUMBER" ]; then
           BODY_FILE="$(mktemp)"
-          {
-            printf '<!-- coverage-notes-report -->\n'
-            cat "$REPORT_FILE"
-          } > "$BODY_FILE"
+          MAX_COMMENT_BYTES=60000
+          if [ "$(wc -c < "$REPORT_FILE")" -gt "$MAX_COMMENT_BYTES" ]; then
+            {
+              printf '<!-- coverage-notes-report -->\n'
+              head -c "$MAX_COMMENT_BYTES" "$REPORT_FILE" | sed '$d'
+              printf '\n_Report truncated due to GitHub comment size limits. See the [full Job Summary](%s/%s/actions/runs/%s)._\n' \
+                "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID"
+            } > "$BODY_FILE"
+          else
+            {
+              printf '<!-- coverage-notes-report -->\n'
+              cat "$REPORT_FILE"
+            } > "$BODY_FILE"
+          fi
 
           COMMENT_AUTHOR="$(gh api user --jq '.login' 2>/dev/null || printf 'github-actions[bot]')"
 
