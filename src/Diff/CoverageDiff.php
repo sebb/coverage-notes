@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Sebb\CoverageNotes\Diff;
 
 use Sebb\CoverageNotes\Coverage\CoverageSummary;
+use Symfony\Component\Serializer\Attribute\Ignore;
 
 final readonly class CoverageDiff
 {
@@ -20,6 +21,7 @@ final readonly class CoverageDiff
         public ?CoverageSummary $baseline = null,
         public ?string $baselineCommit = null,
         public array $changedItems = [],
+        public int $commitsBehindTarget = 0,
     ) {
         if ($baseline !== null) {
             $this->projectPercentageDelta = round($current->project->percentage - $baseline->project->percentage, 2);
@@ -32,29 +34,9 @@ final readonly class CoverageDiff
         }
     }
 
+    #[Ignore]
     public function hasBaseline(): bool
     {
         return $this->baseline !== null;
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    public function toArray(): array
-    {
-        return [
-            'baseline_commit' => $this->baselineCommit,
-            'project' => [
-                'baseline' => $this->baseline?->project->toArray(),
-                'current' => $this->current->project->toArray(),
-                'percentage_delta' => $this->projectPercentageDelta,
-                'statements_delta' => $this->projectStatementsDelta,
-                'covered_delta' => $this->projectCoveredDelta,
-            ],
-            'changed_items' => array_values(array_map(
-                static fn(ItemDiff $diff): array => $diff->toArray(),
-                $this->changedItems,
-            )),
-        ];
     }
 }

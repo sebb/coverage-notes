@@ -24,28 +24,4 @@ final readonly class ItemMetrics
 
         return round(($covered / $statements) * 100, 2);
     }
-
-    /**
-     * @param array{statements: int, covered: int, percentage?: float} $data
-     */
-    public static function fromArray(array $data): self
-    {
-        return new self(
-            statements: (int) $data['statements'],
-            covered: (int) $data['covered'],
-            percentage: isset($data['percentage']) ? (float) $data['percentage'] : null,
-        );
-    }
-
-    /**
-     * @return array{statements: int, covered: int, percentage: float}
-     */
-    public function toArray(): array
-    {
-        return [
-            'statements' => $this->statements,
-            'covered' => $this->covered,
-            'percentage' => $this->percentage,
-        ];
-    }
 }

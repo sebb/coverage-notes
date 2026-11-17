@@ -12,6 +12,7 @@ final readonly class CoverageDiffer
         CoverageSummary $current,
         ?CoverageSummary $baseline = null,
         ?string $baselineCommit = null,
+        int $commitsBehindTarget = 0,
     ): CoverageDiff {
         if ($baseline === null) {
             return new CoverageDiff(
@@ -19,6 +20,7 @@ final readonly class CoverageDiffer
                 baseline: null,
                 baselineCommit: null,
                 changedItems: [],
+                commitsBehindTarget: 0,
             );
         }
 
@@ -77,6 +79,7 @@ final readonly class CoverageDiffer
             baseline: $baseline,
             baselineCommit: $baselineCommit,
             changedItems: $changedItems,
+            commitsBehindTarget: $commitsBehindTarget,
         );
     }
 }

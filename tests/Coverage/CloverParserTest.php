@@ -6,7 +6,7 @@ namespace Sebb\CoverageNotes\Tests\Coverage;
 
 use PHPUnit\Framework\TestCase;
 use Sebb\CoverageNotes\Coverage\CloverParser;
-use Sebb\CoverageNotes\Coverage\CoverageSummary;
+use Sebb\CoverageNotes\Serializer\CoverageSerializer;
 
 final class CloverParserTest extends TestCase
 {
@@ -48,12 +48,13 @@ final class CloverParserTest extends TestCase
         self::assertSame(90.0, $summary->items['App\Service\PaymentService']->percentage);
         self::assertSame(60.0, $summary->items['src/helpers.php']->percentage);
 
-        $json = $summary->toJson();
+        $serializer = new CoverageSerializer();
+        $json = $serializer->serializeSummary($summary);
         self::assertStringContainsString('"version": 1', $json);
-        self::assertStringContainsString('"App\\\\Service\\\\PaymentService": {"statements":40,"covered":36,"percentage":90.0}', $json);
-        self::assertStringContainsString('"src/helpers.php": {"statements":10,"covered":6,"percentage":60.0}', $json);
+        self::assertStringContainsString('"App\\\\Service\\\\PaymentService": {', $json);
+        self::assertStringContainsString('"src/helpers.php": {', $json);
 
-        $rehydrated = CoverageSummary::fromJson($json);
+        $rehydrated = $serializer->deserializeSummary($json);
         self::assertEquals($summary, $rehydrated);
     }
 }

@@ -6,6 +6,7 @@ namespace Sebb\CoverageNotes\Command;
 
 use Sebb\CoverageNotes\Coverage\CloverParser;
 use Sebb\CoverageNotes\Git\GitNotesStorage;
+use Sebb\CoverageNotes\Serializer\CoverageSerializer;
 use Symfony\Component\Console\Attribute\Argument;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Attribute\Option;
@@ -21,6 +22,7 @@ final readonly class RecordCommand
 {
     public function __construct(
         private CloverParser $parser = new CloverParser(),
+        private CoverageSerializer $serializer = new CoverageSerializer(),
         private ?GitNotesStorage $storage = null,
     ) {
     }
@@ -54,11 +56,11 @@ final readonly class RecordCommand
         }
 
         if ($dryRun) {
-            $output->write($summary->toJson());
+            $output->write($this->serializer->serializeSummary($summary));
             return Command::SUCCESS;
         }
 
-        $storage = $this->storage ?? new GitNotesStorage($effectiveWorkspace);
+        $storage = $this->storage ?? new GitNotesStorage($effectiveWorkspace, $this->serializer);
 
         try {
             if ($fetch) {

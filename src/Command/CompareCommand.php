@@ -76,19 +76,19 @@ final readonly class CompareCommand
         }
 
         $resolvedBaseline = $storage->resolveBaseline($base, $strategy, $ref);
+        $commitsBehind = $resolvedBaseline?->commitsBehindTarget ?? 0;
 
         $diff = $this->differ->diff(
             current: $current,
             baseline: $resolvedBaseline?->summary,
             baselineCommit: $resolvedBaseline?->commitSha,
+            commitsBehindTarget: $commitsBehind,
         );
-
-        $commitsBehind = $resolvedBaseline?->commitsBehindTarget ?? 0;
 
         match ($format) {
             ReportFormat::Console => $this->consoleFormatter->render($diff, $output, $commitsBehind),
             ReportFormat::Markdown => $output->write($this->markdownFormatter->format($diff, $commitsBehind)),
-            ReportFormat::Json => $output->write($this->jsonFormatter->format($diff, $commitsBehind)),
+            ReportFormat::Json => $output->write($this->jsonFormatter->format($diff)),
         };
 
         if ($failUnder !== null && $current->project->percentage < $failUnder) {

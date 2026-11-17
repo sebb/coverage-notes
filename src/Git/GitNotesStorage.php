@@ -6,6 +6,7 @@ namespace Sebb\CoverageNotes\Git;
 
 use RuntimeException;
 use Sebb\CoverageNotes\Coverage\CoverageSummary;
+use Sebb\CoverageNotes\Serializer\CoverageSerializer;
 use Symfony\Component\Process\Process;
 
 final readonly class GitNotesStorage
@@ -14,6 +15,7 @@ final readonly class GitNotesStorage
 
     public function __construct(
         private ?string $workingDirectory = null,
+        private CoverageSerializer $serializer = new CoverageSerializer(),
     ) {
     }
 
@@ -48,7 +50,7 @@ final readonly class GitNotesStorage
             '-',
             $commitSha,
         ]);
-        $process->setInput($summary->toJson());
+        $process->setInput($this->serializer->serializeSummary($summary));
         $process->run();
 
         if (!$process->isSuccessful()) {
@@ -127,7 +129,7 @@ final readonly class GitNotesStorage
             return null;
         }
 
-        return CoverageSummary::fromJson($output);
+        return $this->serializer->deserializeSummary($output);
     }
 
     public function resolveBaseline(

@@ -30,20 +30,4 @@ final readonly class ItemDiff
         $this->statementsDelta = ($current?->statements ?? 0) - ($baseline?->statements ?? 0);
         $this->coveredDelta = ($current?->covered ?? 0) - ($baseline?->covered ?? 0);
     }
-
-    /**
-     * @return array<string, mixed>
-     */
-    public function toArray(): array
-    {
-        return [
-            'name' => $this->name,
-            'type' => $this->type->value,
-            'baseline' => $this->baseline?->toArray(),
-            'current' => $this->current?->toArray(),
-            'percentage_delta' => $this->percentageDelta,
-            'statements_delta' => $this->statementsDelta,
-            'covered_delta' => $this->coveredDelta,
-        ];
-    }
 }
