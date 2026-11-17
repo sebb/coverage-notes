@@ -38,6 +38,7 @@
         "bin/coverage-notes"
     ],
     "scripts": {
+        "build:phar": "box compile",
         "cs:check": "php-cs-fixer fix --dry-run --diff",
         "cs:fix": "php-cs-fixer fix",
         "phpstan": "phpstan analyse",

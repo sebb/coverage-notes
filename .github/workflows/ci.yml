@@ -28,7 +28,7 @@ jobs:
         with:
           php-version: '8.4'
           coverage: pcov
-          tools: composer:v2
+          tools: composer:v2, box
 
       - name: Install dependencies
         run: composer install --no-interaction --prefer-dist
@@ -53,3 +53,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           bin/coverage-notes record coverage.xml --push
+
+      - name: Build and smoke-test PHAR
+        run: |
+          box compile
+          build/coverage-notes.phar --version
+          build/coverage-notes.phar history --no-fetch --limit=5

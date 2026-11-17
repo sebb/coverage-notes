@@ -28,7 +28,8 @@ if (!$loaded) {
     exit(1);
 }
 
-$application = new Application('coverage-notes', '0.1.0');
+$version = '@git_version@';
+$application = new Application('coverage-notes', str_starts_with($version, '@') ? '0.1.0' : $version);
 $application->addCommands([
     new RecordCommand(),
     new CompareCommand(),
