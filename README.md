@@ -55,6 +55,7 @@ Use the composite action directly in your workflow after running PHPUnit with `-
 ```yaml
 permissions:
   contents: write # Required to push refs/notes/coverage on main
+  pull-requests: write # Required when pr-comment is enabled
 
 jobs:
   tests:
@@ -72,15 +73,16 @@ jobs:
       - run: composer install --no-interaction --prefer-dist
       - run: vendor/bin/phpunit --coverage-clover=coverage.xml
 
-      - uses: sebb/coverage-notes@v1
+      - uses: sebb/coverage-notes@v0.1.0
         with:
           clover-file: coverage.xml
           base-branch: main
           max-drop: 0
+          pr-comment: true
 ```
 
 In the default `auto` mode, the action:
-- Runs `compare` on every push and pull request (posting a Markdown table to the GitHub Actions Job Summary and printing the console report).
+- Runs `compare` on every push and pull request (posting a Markdown table to the GitHub Actions Job Summary, optionally posting or updating a sticky PR comment when `pr-comment: true`, and printing the console report).
 - Runs `record --push` when pushing to `base-branch`.
 
 ### Action Inputs
@@ -96,6 +98,8 @@ In the default `auto` mode, the action:
 | `ref` | `coverage` | Git notes ref namespace (`refs/notes/<ref>`) |
 | `remote` | `origin` | Git remote name |
 | `push` | `true` | Push recorded notes back to the remote (`true` or `false`) |
+| `pr-comment` | `false` | Post or update a sticky coverage report comment on pull requests (`true` or `false`) |
+| `github-token` | `${{ github.token }}` | GitHub token used to post or update pull request comments |
 
 ## CLI Usage
 

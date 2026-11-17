@@ -43,6 +43,14 @@ inputs:
     description: 'Push the recorded Git note back to the remote repository ("true" or "false")'
     required: false
     default: 'true'
+  pr-comment:
+    description: 'Post or update a sticky coverage report comment on pull requests ("true" or "false")'
+    required: false
+    default: 'false'
+  github-token:
+    description: 'GitHub token used to post or update pull request comments'
+    required: false
+    default: ${{ github.token }}
 
 runs:
   using: 'composite'
@@ -70,6 +78,9 @@ runs:
         REMOTE: ${{ inputs.remote }}
         FAIL_UNDER: ${{ inputs.fail-under }}
         MAX_DROP: ${{ inputs.max-drop }}
+        PR_COMMENT: ${{ inputs.pr-comment }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        GH_TOKEN: ${{ inputs.github-token }}
       run: |
         ARGS=(
           --base="$BASE_REF"
@@ -78,7 +89,45 @@ runs:
           --remote="$REMOTE"
         )
 
-        "$GITHUB_ACTION_PATH/bin/coverage-notes" compare "$CLOVER_FILE" "${ARGS[@]}" --format=markdown >> "$GITHUB_STEP_SUMMARY"
+        REPORT_FILE="$(mktemp)"
+        BODY_FILE=""
+        trap 'rm -f "$REPORT_FILE" "$BODY_FILE"' EXIT
+
+        "$GITHUB_ACTION_PATH/bin/coverage-notes" compare "$CLOVER_FILE" "${ARGS[@]}" --format=markdown > "$REPORT_FILE"
+        cat "$REPORT_FILE" >> "$GITHUB_STEP_SUMMARY"
+
+        if [ "$PR_COMMENT" = "true" ] && [ -n "$PR_NUMBER" ]; then
+          BODY_FILE="$(mktemp)"
+          {
+            printf '<!-- coverage-notes-report -->\n'
+            cat "$REPORT_FILE"
+          } > "$BODY_FILE"
+
+          EXISTING_COMMENT_ID="$(
+            gh api --paginate \
+              "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+              --jq '.[] | select((.body // "") | contains("<!-- coverage-notes-report -->")) | .id' \
+              | head -n 1
+          )"
+
+          if [ -n "$EXISTING_COMMENT_ID" ]; then
+            gh api \
+              --method PATCH \
+              "repos/$GITHUB_REPOSITORY/issues/comments/$EXISTING_COMMENT_ID" \
+              -F "body=@$BODY_FILE" > /dev/null
+          else
+            gh api \
+              --method POST \
+              "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+              -F "body=@$BODY_FILE" > /dev/null
+          fi
+
+          rm -f "$BODY_FILE"
+          BODY_FILE=""
+        fi
+
+        rm -f "$REPORT_FILE"
+        trap - EXIT
 
         if [ -n "$FAIL_UNDER" ]; then
           ARGS+=(--fail-under="$FAIL_UNDER")
@@ -88,7 +137,7 @@ runs:
           ARGS+=(--max-drop="$MAX_DROP")
         fi
 
-        "$GITHUB_ACTION_PATH/bin/coverage-notes" compare "$CLOVER_FILE" "${ARGS[@]}" --format=console
+        "$GITHUB_ACTION_PATH/bin/coverage-notes" compare "$CLOVER_FILE" "${ARGS[@]}" --no-fetch --format=console
 
     - name: Record coverage note
       if: ${{ inputs.mode == 'record' || (inputs.mode == 'auto' && github.event_name == 'push' && github.ref_name == inputs.base-branch) }}
