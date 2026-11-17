@@ -45,7 +45,7 @@ jobs:
       - name: Compare coverage
         run: |
           bin/coverage-notes compare coverage.xml --base=origin/main --format=markdown >> "$GITHUB_STEP_SUMMARY"
-          bin/coverage-notes compare coverage.xml --base=origin/main
+          bin/coverage-notes compare coverage.xml --base=origin/main --max-drop=0
 
       - name: Record coverage note
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

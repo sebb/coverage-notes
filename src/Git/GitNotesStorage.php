@@ -8,6 +8,7 @@ use RuntimeException;
 use Sebb\CoverageNotes\Coverage\CoverageSummary;
 use Sebb\CoverageNotes\Serializer\CoverageSerializer;
 use Symfony\Component\Process\Process;
+use Throwable;
 
 final readonly class GitNotesStorage
 {
@@ -22,15 +23,32 @@ final readonly class GitNotesStorage
     public function fetchNotes(string $notesRef = self::DEFAULT_NOTES_REF, string $remote = 'origin'): bool
     {
         $normalizedRef = $this->normalizeNotesRef($notesRef);
-        $process = $this->createProcess([
+        $remoteTrackingRef = sprintf('refs/notes/origin-%s', ltrim($notesRef, '/'));
+
+        $fetchProcess = $this->createProcess([
             'git',
             'fetch',
             $remote,
-            sprintf('%s:%s', $normalizedRef, $normalizedRef),
+            sprintf('+%s:%s', $normalizedRef, $remoteTrackingRef),
         ]);
-        $process->run();
+        $fetchProcess->run();
 
-        return $process->isSuccessful();
+        if (!$fetchProcess->isSuccessful()) {
+            return str_contains($fetchProcess->getErrorOutput(), "couldn't find remote ref");
+        }
+
+        $mergeProcess = $this->createProcess([
+            'git',
+            'notes',
+            sprintf('--ref=%s', $notesRef),
+            'merge',
+            '-s',
+            'ours',
+            $remoteTrackingRef,
+        ]);
+        $mergeProcess->run();
+
+        return $mergeProcess->isSuccessful();
     }
 
     public function recordNote(
@@ -63,29 +81,7 @@ final readonly class GitNotesStorage
     public function pushNotes(string $notesRef = self::DEFAULT_NOTES_REF, string $remote = 'origin'): void
     {
         $normalizedRef = $this->normalizeNotesRef($notesRef);
-
-        // Fetch remote notes into a temporary ref and merge with local notes to avoid non-fast-forward failures
-        $remoteTrackingRef = sprintf('refs/notes/origin-%s', ltrim($notesRef, '/'));
-        $fetchProcess = $this->createProcess([
-            'git',
-            'fetch',
-            $remote,
-            sprintf('%s:%s', $normalizedRef, $remoteTrackingRef),
-        ]);
-        $fetchProcess->run();
-
-        if ($fetchProcess->isSuccessful()) {
-            $mergeProcess = $this->createProcess([
-                'git',
-                'notes',
-                sprintf('--ref=%s', $notesRef),
-                'merge',
-                '-s',
-                'ours',
-                $remoteTrackingRef,
-            ]);
-            $mergeProcess->run();
-        }
+        $this->fetchNotes($notesRef, $remote);
 
         $pushProcess = $this->createProcess([
             'git',
@@ -120,7 +116,11 @@ final readonly class GitNotesStorage
             return null;
         }
 
-        return $this->serializer->deserializeSummary($output);
+        try {
+            return $this->serializer->deserializeSummary($output);
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     public function resolveBaseline(
@@ -194,6 +194,7 @@ final readonly class GitNotesStorage
         int $limit = 10,
         string $branchRef = 'HEAD',
         string $notesRef = self::DEFAULT_NOTES_REF,
+        bool $includeNotes = true,
     ): array {
         $process = $this->createProcess([
             'git',
@@ -227,11 +228,57 @@ final readonly class GitNotesStorage
                 shortSha: $shortSha,
                 subject: $subject,
                 committedAt: $date,
-                summary: $this->readNote($fullSha, $notesRef),
+                summary: $includeNotes ? $this->readNote($fullSha, $notesRef) : null,
             );
         }
 
         return $entries;
+    }
+
+    public function getRepositoryRoot(): string
+    {
+        $process = $this->createProcess(['git', 'rev-parse', '--show-toplevel']);
+        $process->run();
+
+        if ($process->isSuccessful()) {
+            return trim($process->getOutput());
+        }
+
+        return $this->workingDirectory ?? (getcwd() ?: '.');
+    }
+
+    public function addWorktree(string $worktreePath, string $commitRef): void
+    {
+        $process = $this->createProcess([
+            'git',
+            'worktree',
+            'add',
+            '--detach',
+            $worktreePath,
+            $commitRef,
+        ]);
+        $process->run();
+
+        if (!$process->isSuccessful()) {
+            throw new RuntimeException(sprintf('Failed to create worktree for "%s": %s', $commitRef, trim($process->getErrorOutput() ?: $process->getOutput())));
+        }
+    }
+
+    public function removeWorktree(string $worktreePath): void
+    {
+        $process = $this->createProcess([
+            'git',
+            'worktree',
+            'remove',
+            '--force',
+            $worktreePath,
+        ]);
+        $process->run();
+
+        if (is_dir($worktreePath)) {
+            (new Process(['rm', '-rf', $worktreePath]))->run();
+            $this->createProcess(['git', 'worktree', 'prune'])->run();
+        }
     }
 
     public function resolveCommitSha(string $ref): string

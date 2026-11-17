@@ -3,6 +3,7 @@
 
 declare(strict_types=1);
 
+use Sebb\CoverageNotes\Command\BackfillCommand;
 use Sebb\CoverageNotes\Command\CompareCommand;
 use Sebb\CoverageNotes\Command\HistoryCommand;
 use Sebb\CoverageNotes\Command\RecordCommand;
@@ -32,6 +33,7 @@ $application->addCommands([
     new RecordCommand(),
     new CompareCommand(),
     new HistoryCommand(),
+    new BackfillCommand(),
 ]);
 
 exit($application->run());

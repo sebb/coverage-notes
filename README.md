@@ -140,6 +140,25 @@ git fetch origin refs/notes/coverage:refs/notes/coverage
 git log --show-notes=coverage -n 5
 ```
 
+### `backfill`
+
+Populate missing coverage notes on recent commits by checking out each commit in a temporary `git worktree` (without touching your working directory):
+
+```bash
+bin/coverage-notes backfill --limit=10 --push
+```
+
+Options:
+- `-l, --limit=LIMIT` — Maximum number of recent commits to inspect (default: `10`)
+- `-b, --branch=BRANCH` — Branch or commit reference to inspect (default: `HEAD`)
+- `-c, --command=COMMAND` — Shell command to generate the Clover XML file in the worktree (default: `XDEBUG_MODE=coverage vendor/bin/phpunit --coverage-clover=coverage.xml`)
+- `--clover-file=CLOVER-FILE` — Relative path to the Clover XML file generated inside the worktree (default: `coverage.xml`)
+- `-f, --force` — Recompute and overwrite commits that already have a coverage note
+- `--ref=REF` — Git notes ref namespace (default: `coverage`)
+- `--remote=REMOTE` — Git remote name (default: `origin`)
+- `--fetch` / `--no-fetch` — Fetch coverage notes before backfilling (default: `--fetch`)
+- `-p, --push` — Push updated notes back to the remote after backfilling
+
 ## GitLab CI Example
 
 ```yaml
