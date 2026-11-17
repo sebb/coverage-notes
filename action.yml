@@ -43,6 +43,14 @@ inputs:
     description: 'Push the recorded Git note back to the remote repository ("true" or "false")'
     required: false
     default: 'true'
+  pr-comment:
+    description: 'Post or update a sticky coverage report comment on pull requests ("true" or "false")'
+    required: false
+    default: 'false'
+  github-token:
+    description: 'GitHub token used to post or update pull request comments'
+    required: false
+    default: ${{ github.token }}
 
 runs:
   using: 'composite'
@@ -70,6 +78,9 @@ runs:
         REMOTE: ${{ inputs.remote }}
         FAIL_UNDER: ${{ inputs.fail-under }}
         MAX_DROP: ${{ inputs.max-drop }}
+        PR_COMMENT: ${{ inputs.pr-comment }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        GH_TOKEN: ${{ inputs.github-token }}
       run: |
         ARGS=(
           --base="$BASE_REF"
@@ -78,7 +89,62 @@ runs:
           --remote="$REMOTE"
         )
 
-        "$GITHUB_ACTION_PATH/bin/coverage-notes" compare "$CLOVER_FILE" "${ARGS[@]}" --format=markdown >> "$GITHUB_STEP_SUMMARY"
+        REPORT_FILE="$(mktemp)"
+        BODY_FILE=""
+        trap 'rm -f "$REPORT_FILE" "$BODY_FILE"' EXIT
+
+        "$GITHUB_ACTION_PATH/bin/coverage-notes" compare "$CLOVER_FILE" "${ARGS[@]}" --format=markdown > "$REPORT_FILE"
+        cat "$REPORT_FILE" >> "$GITHUB_STEP_SUMMARY"
+
+        if [ "$PR_COMMENT" = "true" ] && [ -n "$PR_NUMBER" ]; then
+          BODY_FILE="$(mktemp)"
+          MAX_COMMENT_BYTES=60000
+          if [ "$(wc -c < "$REPORT_FILE")" -gt "$MAX_COMMENT_BYTES" ]; then
+            {
+              printf '<!-- coverage-notes-report -->\n'
+              head -c "$MAX_COMMENT_BYTES" "$REPORT_FILE" | sed '$d'
+              printf '\n_Report truncated due to GitHub comment size limits. See the [full Job Summary](%s/%s/actions/runs/%s)._\n' \
+                "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID"
+            } > "$BODY_FILE"
+          else
+            {
+              printf '<!-- coverage-notes-report -->\n'
+              cat "$REPORT_FILE"
+            } > "$BODY_FILE"
+          fi
+
+          COMMENT_AUTHOR="$(gh api user --jq '.login' 2>/dev/null || printf 'github-actions[bot]')"
+
+          if COMMENTS_JSON="$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments")"; then
+            EXISTING_COMMENT_ID="$(
+              printf '%s\n' "$COMMENTS_JSON" \
+                | jq -r --arg author "$COMMENT_AUTHOR" '.[] | select(((.body // "") | startswith("<!-- coverage-notes-report -->\n")) and (.user.login == $author or .user.type == "Bot")) | .id' \
+                | head -n 1
+            )"
+
+            if [ -n "$EXISTING_COMMENT_ID" ]; then
+              gh api \
+                --method PATCH \
+                "repos/$GITHUB_REPOSITORY/issues/comments/$EXISTING_COMMENT_ID" \
+                -F "body=@$BODY_FILE" > /dev/null \
+                || echo "::warning::Failed to update PR coverage comment #$EXISTING_COMMENT_ID."
+            else
+              gh api \
+                --method POST \
+                "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+                -F "body=@$BODY_FILE" > /dev/null \
+                || echo "::warning::Failed to post PR coverage comment on PR #$PR_NUMBER."
+            fi
+          else
+            echo "::warning::Failed to list comments on PR #$PR_NUMBER; skipping sticky coverage comment."
+          fi
+
+          rm -f "$BODY_FILE"
+          BODY_FILE=""
+        fi
+
+        rm -f "$REPORT_FILE"
+        trap - EXIT
 
         if [ -n "$FAIL_UNDER" ]; then
           ARGS+=(--fail-under="$FAIL_UNDER")
@@ -88,7 +154,7 @@ runs:
           ARGS+=(--max-drop="$MAX_DROP")
         fi
 
-        "$GITHUB_ACTION_PATH/bin/coverage-notes" compare "$CLOVER_FILE" "${ARGS[@]}" --format=console
+        "$GITHUB_ACTION_PATH/bin/coverage-notes" compare "$CLOVER_FILE" "${ARGS[@]}" --no-fetch --format=console
 
     - name: Record coverage note
       if: ${{ inputs.mode == 'record' || (inputs.mode == 'auto' && github.event_name == 'push' && github.ref_name == inputs.base-branch) }}
