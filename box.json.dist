@@ -1,7 +1,5 @@
 {
-    "main": "bin/coverage-notes",
     "output": "build/coverage-notes.phar",
-    "chmod": "0755",
     "compression": "GZ",
     "check-requirements": false,
     "git-version": "git_version"
