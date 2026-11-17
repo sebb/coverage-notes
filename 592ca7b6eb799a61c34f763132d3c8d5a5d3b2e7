@@ -1,0 +1,90 @@
+{
+    "project": {
+        "percentage": 61.63,
+        "statements": 576,
+        "covered": 355
+    },
+    "items": {
+        "Sebb\\CoverageNotes\\Command\\CompareCommand": {
+            "percentage": 72.5,
+            "statements": 40,
+            "covered": 29
+        },
+        "Sebb\\CoverageNotes\\Command\\HistoryCommand": {
+            "percentage": 0.0,
+            "statements": 50,
+            "covered": 0
+        },
+        "Sebb\\CoverageNotes\\Command\\RecordCommand": {
+            "percentage": 64.29,
+            "statements": 28,
+            "covered": 18
+        },
+        "Sebb\\CoverageNotes\\Coverage\\CloverParser": {
+            "percentage": 78.57,
+            "statements": 56,
+            "covered": 44
+        },
+        "Sebb\\CoverageNotes\\Coverage\\CoverageSummary": {
+            "percentage": 100.0,
+            "statements": 1,
+            "covered": 1
+        },
+        "Sebb\\CoverageNotes\\Coverage\\ItemMetrics": {
+            "percentage": 75.0,
+            "statements": 4,
+            "covered": 3
+        },
+        "Sebb\\CoverageNotes\\Diff\\CoverageDiff": {
+            "percentage": 62.5,
+            "statements": 8,
+            "covered": 5
+        },
+        "Sebb\\CoverageNotes\\Diff\\CoverageDiffer": {
+            "percentage": 86.27,
+            "statements": 51,
+            "covered": 44
+        },
+        "Sebb\\CoverageNotes\\Diff\\ItemDiff": {
+            "percentage": 100.0,
+            "statements": 8,
+            "covered": 8
+        },
+        "Sebb\\CoverageNotes\\Git\\GitNotesStorage": {
+            "percentage": 44.94,
+            "statements": 178,
+            "covered": 80
+        },
+        "Sebb\\CoverageNotes\\Git\\HistoryEntry": {
+            "percentage": 0.0,
+            "statements": 1,
+            "covered": 0
+        },
+        "Sebb\\CoverageNotes\\Git\\ResolvedBaseline": {
+            "percentage": 100.0,
+            "statements": 1,
+            "covered": 1
+        },
+        "Sebb\\CoverageNotes\\Report\\ConsoleFormatter": {
+            "percentage": 77.59,
+            "statements": 58,
+            "covered": 45
+        },
+        "Sebb\\CoverageNotes\\Report\\JsonFormatter": {
+            "percentage": 50.0,
+            "statements": 2,
+            "covered": 1
+        },
+        "Sebb\\CoverageNotes\\Report\\MarkdownFormatter": {
+            "percentage": 81.03,
+            "statements": 58,
+            "covered": 47
+        },
+        "Sebb\\CoverageNotes\\Serializer\\CoverageSerializer": {
+            "percentage": 90.63,
+            "statements": 32,
+            "covered": 29
+        }
+    },
+    "version": 1
+}
