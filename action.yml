@@ -103,23 +103,30 @@ runs:
             cat "$REPORT_FILE"
           } > "$BODY_FILE"
 
-          EXISTING_COMMENT_ID="$(
-            gh api --paginate \
-              "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
-              --jq '.[] | select((.body // "") | contains("<!-- coverage-notes-report -->")) | .id' \
-              | head -n 1
-          )"
+          COMMENT_AUTHOR="$(gh api user --jq '.login' 2>/dev/null || printf 'github-actions[bot]')"
 
-          if [ -n "$EXISTING_COMMENT_ID" ]; then
-            gh api \
-              --method PATCH \
-              "repos/$GITHUB_REPOSITORY/issues/comments/$EXISTING_COMMENT_ID" \
-              -F "body=@$BODY_FILE" > /dev/null
+          if COMMENTS_JSON="$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments")"; then
+            EXISTING_COMMENT_ID="$(
+              printf '%s\n' "$COMMENTS_JSON" \
+                | jq -r --arg author "$COMMENT_AUTHOR" '.[] | select(((.body // "") | startswith("<!-- coverage-notes-report -->\n")) and (.user.login == $author or .user.type == "Bot")) | .id' \
+                | head -n 1
+            )"
+
+            if [ -n "$EXISTING_COMMENT_ID" ]; then
+              gh api \
+                --method PATCH \
+                "repos/$GITHUB_REPOSITORY/issues/comments/$EXISTING_COMMENT_ID" \
+                -F "body=@$BODY_FILE" > /dev/null \
+                || echo "::warning::Failed to update PR coverage comment #$EXISTING_COMMENT_ID."
+            else
+              gh api \
+                --method POST \
+                "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+                -F "body=@$BODY_FILE" > /dev/null \
+                || echo "::warning::Failed to post PR coverage comment on PR #$PR_NUMBER."
+            fi
           else
-            gh api \
-              --method POST \
-              "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
-              -F "body=@$BODY_FILE" > /dev/null
+            echo "::warning::Failed to list comments on PR #$PR_NUMBER; skipping sticky coverage comment."
           fi
 
           rm -f "$BODY_FILE"
