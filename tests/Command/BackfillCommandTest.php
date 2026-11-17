@@ -20,15 +20,37 @@ final class BackfillCommandTest extends TestCase
     private string $tempRootDir;
     private string $tempRemoteDir;
     private string $tempRepoDir;
+    private ?string $originalPath = null;
 
     protected function setUp(): void
     {
         $this->tempRootDir = sys_get_temp_dir() . '/coverage-notes-backfill-' . bin2hex(random_bytes(6));
         $this->tempRemoteDir = $this->tempRootDir . '/remote.git';
         $this->tempRepoDir = $this->tempRootDir . '/repo';
+        $this->originalPath = getenv('PATH') ?: '';
 
         mkdir($this->tempRemoteDir, 0777, true);
         mkdir($this->tempRepoDir, 0777, true);
+
+        $binDir = $this->tempRootDir . '/bin';
+        mkdir($binDir, 0777, true);
+        file_put_contents(
+            $binDir . '/composer',
+            <<<'PHP'
+            #!/usr/bin/env php
+            <?php
+            $config = json_decode((string) file_get_contents('composer.json'), true);
+            $target = is_array($config) && is_string($config['autoload']['files'][0] ?? null)
+                ? $config['autoload']['files'][0]
+                : 'src/Calculator.php';
+            if (!is_dir('vendor')) {
+                mkdir('vendor', 0777, true);
+            }
+            file_put_contents('vendor/autoload.php', "<?php\n\nrequire_once __DIR__ . '/../{$target}';\n");
+            PHP,
+        );
+        chmod($binDir . '/composer', 0755);
+        putenv('PATH=' . $binDir . PATH_SEPARATOR . $this->originalPath);
 
         $this->runGit(['init', '--bare'], $this->tempRemoteDir);
         $this->runGit(['init', '-b', 'main']);
@@ -50,6 +72,10 @@ final class BackfillCommandTest extends TestCase
 
     protected function tearDown(): void
     {
+        if ($this->originalPath !== null) {
+            putenv('PATH=' . $this->originalPath);
+        }
+
         if (is_dir($this->tempRootDir)) {
             (new Process(['rm', '-rf', $this->tempRootDir]))->run();
         }
@@ -67,15 +93,17 @@ final class BackfillCommandTest extends TestCase
         $this->runGit(['commit', '-m', 'Failing commit']);
         $failingSha = $this->runGit(['rev-parse', 'HEAD']);
 
-        // Commit 2: generates invalid XML (exercises exception handling during parsing)
+        // Commit 2: has composer.json without composer.lock and generates invalid XML
         file_put_contents($this->tempRepoDir . '/state.txt', 'invalid-xml');
-        $this->runGit(['add', 'state.txt']);
+        file_put_contents($this->tempRepoDir . '/composer.json', '{"autoload":{"files":["src/Calculator.php"]}}');
+        $this->runGit(['add', 'state.txt', 'composer.json']);
         $this->runGit(['commit', '-m', 'Invalid XML commit']);
         $invalidXmlSha = $this->runGit(['rev-parse', 'HEAD']);
 
-        // Commit 3: missing note, Calculator has 50% coverage (10/20 statements)
+        // Commit 3: missing note, Calculator lives at legacy-src/Calculator.php (50% coverage: 10/20 statements)
         file_put_contents($this->tempRepoDir . '/state.txt', 'run');
-        file_put_contents($this->tempRepoDir . '/src/Calculator.php', <<<'PHP'
+        mkdir($this->tempRepoDir . '/legacy-src', 0777, true);
+        file_put_contents($this->tempRepoDir . '/legacy-src/Calculator.php', <<<'PHP'
         <?php
 
         declare(strict_types=1);
@@ -90,11 +118,14 @@ final class BackfillCommandTest extends TestCase
             }
         }
         PHP);
-        $this->runGit(['add', 'state.txt', 'src/Calculator.php']);
+        file_put_contents($this->tempRepoDir . '/composer.json', '{"autoload":{"files":["legacy-src/Calculator.php"]}}');
+        file_put_contents($this->tempRepoDir . '/composer.lock', '{"content-hash":"commit-3"}');
+        $this->runGit(['add', 'state.txt', 'composer.json', 'composer.lock', 'legacy-src/Calculator.php']);
         $this->runGit(['commit', '-m', 'Calculator at 50 percent']);
         $calc50Sha = $this->runGit(['rev-parse', 'HEAD']);
 
-        // Commit 4: already has a pre-existing 90% note, while working tree state is 20/20 (100%)
+        // Commit 4: moves Calculator to src/Calculator.php (100% coverage: 20/20) with a pre-existing 90% note
+        $this->runGit(['rm', 'legacy-src/Calculator.php']);
         file_put_contents($this->tempRepoDir . '/src/Calculator.php', <<<'PHP'
         <?php
 
@@ -110,7 +141,9 @@ final class BackfillCommandTest extends TestCase
             }
         }
         PHP);
-        $this->runGit(['add', 'src/Calculator.php']);
+        file_put_contents($this->tempRepoDir . '/composer.json', '{"autoload":{"files":["src/Calculator.php"]}}');
+        file_put_contents($this->tempRepoDir . '/composer.lock', '{"content-hash":"commit-4"}');
+        $this->runGit(['add', 'composer.json', 'composer.lock', 'src/Calculator.php']);
         $this->runGit(['commit', '-m', 'Calculator at 100 percent']);
         $calc100Sha = $this->runGit(['rev-parse', 'HEAD']);
         $storage->recordNote(new CoverageSummary(new ItemMetrics(20, 18)), $calc100Sha);

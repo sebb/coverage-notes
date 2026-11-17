@@ -80,11 +80,7 @@ final readonly class BackfillCommand
                 try {
                     $storage->addWorktree($worktreeDir, $entry->commitSha);
 
-                    $vendorDir = $repositoryRoot . '/vendor';
-                    $worktreeVendor = $worktreeDir . '/vendor';
-                    if (!is_dir($worktreeVendor) && !is_link($worktreeVendor) && is_dir($vendorDir)) {
-                        (new Process(['cp', '-a', $vendorDir, $worktreeVendor]))->run();
-                    }
+                    $this->prepareWorktreeVendor($repositoryRoot, $worktreeDir);
 
                     $process = Process::fromShellCommandline($command, $worktreeDir, null, null, null);
                     $process->run();
@@ -132,5 +128,36 @@ final readonly class BackfillCommand
         }
 
         return Command::SUCCESS;
+    }
+
+    private function prepareWorktreeVendor(string $repositoryRoot, string $worktreeDir): void
+    {
+        $vendorDir = $repositoryRoot . '/vendor';
+        $worktreeVendor = $worktreeDir . '/vendor';
+
+        if (!is_dir($worktreeVendor) && !is_link($worktreeVendor) && is_dir($vendorDir)) {
+            (new Process(['cp', '-a', $vendorDir, $worktreeVendor]))->mustRun();
+        }
+
+        if (!is_file($worktreeDir . '/composer.json')) {
+            return;
+        }
+
+        if (
+            !is_dir($worktreeVendor)
+            || $this->fileHash($worktreeDir . '/composer.json') !== $this->fileHash($repositoryRoot . '/composer.json')
+            || $this->fileHash($worktreeDir . '/composer.lock') !== $this->fileHash($repositoryRoot . '/composer.lock')
+        ) {
+            $composerCommand = is_file($worktreeDir . '/composer.lock')
+                ? ['composer', 'install', '--no-interaction', '--no-progress', '--no-scripts']
+                : ['composer', 'dump-autoload', '--no-interaction', '--no-scripts'];
+
+            (new Process($composerCommand, $worktreeDir))->run();
+        }
+    }
+
+    private function fileHash(string $path): ?string
+    {
+        return is_file($path) ? (md5_file($path) ?: null) : null;
     }
 }
