@@ -88,7 +88,7 @@ final readonly class BackfillCommand
                 $vendorDir = $storage->getWorkingDirectory() . '/vendor';
                 $worktreeVendor = $worktreeDir . '/vendor';
                 if (!is_dir($worktreeVendor) && !is_link($worktreeVendor) && is_dir($vendorDir)) {
-                    @symlink($vendorDir, $worktreeVendor);
+                    (new Process(['cp', '-a', $vendorDir, $worktreeVendor]))->run();
                 }
 
                 $process = Process::fromShellCommandline($command, $worktreeDir, null, null, null);

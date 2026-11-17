@@ -76,6 +76,7 @@ final class BackfillCommandTest extends TestCase
 
         $cmd = <<<'SH'
         if [ -f fail.txt ]; then exit 1; fi
+        if [ ! -d vendor ] || [ -L vendor ]; then exit 1; fi
         COV=$(cat metrics.txt)
         cat <<XML > coverage.xml
         <?xml version="1.0" encoding="UTF-8"?>
