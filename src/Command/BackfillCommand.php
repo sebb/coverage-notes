@@ -152,7 +152,7 @@ final readonly class BackfillCommand
                 ? ['composer', 'install', '--no-interaction', '--no-progress', '--no-scripts']
                 : ['composer', 'dump-autoload', '--no-interaction', '--no-scripts'];
 
-            (new Process($composerCommand, $worktreeDir))->run();
+            (new Process($composerCommand, $worktreeDir))->mustRun();
         }
     }
 
