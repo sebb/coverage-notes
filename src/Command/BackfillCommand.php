@@ -55,7 +55,7 @@ final readonly class BackfillCommand
                 throw new RuntimeException(sprintf('Failed to synchronize coverage notes from remote "%s".', $remote));
             }
 
-            $entries = $storage->getHistory(max(1, $limit), $branch, $ref);
+            $entries = $storage->getHistory(max(1, $limit), $branch, $ref, !$force);
         } catch (Throwable $e) {
             $output->writeln(sprintf('<error>%s</error>', $e->getMessage()));
 
@@ -67,61 +67,60 @@ final readonly class BackfillCommand
             static fn (HistoryEntry $entry): bool => $force || $entry->summary === null,
         )));
 
+        $recordedCount = 0;
+
         if ($targets === []) {
             $output->writeln('<info>All inspected commits already have coverage notes.</info>');
+        } else {
+            $repositoryRoot = $storage->getRepositoryRoot();
 
-            return Command::SUCCESS;
-        }
+            foreach ($targets as $entry) {
+                $worktreeDir = sys_get_temp_dir() . '/coverage-notes-worktree-' . bin2hex(random_bytes(6));
 
-        $recordedCount = 0;
-        $repositoryRoot = $storage->getRepositoryRoot();
+                try {
+                    $storage->addWorktree($worktreeDir, $entry->commitSha);
 
-        foreach ($targets as $entry) {
-            $worktreeDir = sys_get_temp_dir() . '/coverage-notes-worktree-' . bin2hex(random_bytes(6));
+                    $vendorDir = $repositoryRoot . '/vendor';
+                    $worktreeVendor = $worktreeDir . '/vendor';
+                    if (!is_dir($worktreeVendor) && !is_link($worktreeVendor) && is_dir($vendorDir)) {
+                        (new Process(['cp', '-a', $vendorDir, $worktreeVendor]))->run();
+                    }
 
-            try {
-                $storage->addWorktree($worktreeDir, $entry->commitSha);
+                    $process = Process::fromShellCommandline($command, $worktreeDir, null, null, null);
+                    $process->run();
 
-                $vendorDir = $repositoryRoot . '/vendor';
-                $worktreeVendor = $worktreeDir . '/vendor';
-                if (!is_dir($worktreeVendor) && !is_link($worktreeVendor) && is_dir($vendorDir)) {
-                    (new Process(['cp', '-a', $vendorDir, $worktreeVendor]))->run();
-                }
+                    $cloverPath = $worktreeDir . '/' . ltrim($cloverFile, '/');
+                    if (!$process->isSuccessful() || !is_file($cloverPath)) {
+                        $output->writeln(sprintf(
+                            '<comment>Skipping %s (%s): test command failed or "%s" was not generated.</comment>',
+                            $entry->shortSha,
+                            $entry->subject,
+                            $cloverFile,
+                        ));
+                        continue;
+                    }
 
-                $process = Process::fromShellCommandline($command, $worktreeDir, null, null, null);
-                $process->run();
+                    $summary = $this->parser->parseFile($cloverPath, $worktreeDir);
+                    $storage->recordNote($summary, $entry->commitSha, $ref);
+                    ++$recordedCount;
 
-                $cloverPath = $worktreeDir . '/' . ltrim($cloverFile, '/');
-                if (!$process->isSuccessful() || !is_file($cloverPath)) {
                     $output->writeln(sprintf(
-                        '<comment>Skipping %s (%s): test command failed or "%s" was not generated.</comment>',
+                        '<info>Recorded coverage note on</info> <comment>%s</comment> <info>(%s): %.2f%% (%d/%d statements).</info>',
                         $entry->shortSha,
                         $entry->subject,
-                        $cloverFile,
+                        $summary->project->percentage,
+                        $summary->project->covered,
+                        $summary->project->statements,
                     ));
-                    continue;
+                } catch (Throwable $e) {
+                    $output->writeln(sprintf('<comment>Skipping %s (%s): %s</comment>', $entry->shortSha, $entry->subject, $e->getMessage()));
+                } finally {
+                    $storage->removeWorktree($worktreeDir);
                 }
-
-                $summary = $this->parser->parseFile($cloverPath, $worktreeDir);
-                $storage->recordNote($summary, $entry->commitSha, $ref);
-                ++$recordedCount;
-
-                $output->writeln(sprintf(
-                    '<info>Recorded coverage note on</info> <comment>%s</comment> <info>(%s): %.2f%% (%d/%d statements).</info>',
-                    $entry->shortSha,
-                    $entry->subject,
-                    $summary->project->percentage,
-                    $summary->project->covered,
-                    $summary->project->statements,
-                ));
-            } catch (Throwable $e) {
-                $output->writeln(sprintf('<comment>Skipping %s (%s): %s</comment>', $entry->shortSha, $entry->subject, $e->getMessage()));
-            } finally {
-                $storage->removeWorktree($worktreeDir);
             }
         }
 
-        if ($push && $recordedCount > 0) {
+        if ($push && ($recordedCount > 0 || $targets === [])) {
             try {
                 $storage->pushNotes($ref, $remote);
                 $output->writeln(sprintf('<info>Pushed refs/notes/%s to %s.</info>', ltrim($ref, '/'), $remote));

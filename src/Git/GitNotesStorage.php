@@ -8,6 +8,7 @@ use RuntimeException;
 use Sebb\CoverageNotes\Coverage\CoverageSummary;
 use Sebb\CoverageNotes\Serializer\CoverageSerializer;
 use Symfony\Component\Process\Process;
+use Throwable;
 
 final readonly class GitNotesStorage
 {
@@ -115,7 +116,11 @@ final readonly class GitNotesStorage
             return null;
         }
 
-        return $this->serializer->deserializeSummary($output);
+        try {
+            return $this->serializer->deserializeSummary($output);
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     public function resolveBaseline(
@@ -189,6 +194,7 @@ final readonly class GitNotesStorage
         int $limit = 10,
         string $branchRef = 'HEAD',
         string $notesRef = self::DEFAULT_NOTES_REF,
+        bool $includeNotes = true,
     ): array {
         $process = $this->createProcess([
             'git',
@@ -222,7 +228,7 @@ final readonly class GitNotesStorage
                 shortSha: $shortSha,
                 subject: $subject,
                 committedAt: $date,
-                summary: $this->readNote($fullSha, $notesRef),
+                summary: $includeNotes ? $this->readNote($fullSha, $notesRef) : null,
             );
         }
 
