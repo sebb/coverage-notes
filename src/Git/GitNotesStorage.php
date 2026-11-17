@@ -234,6 +234,45 @@ final readonly class GitNotesStorage
         return $entries;
     }
 
+    public function getWorkingDirectory(): string
+    {
+        return $this->workingDirectory ?? (getcwd() ?: '.');
+    }
+
+    public function addWorktree(string $worktreePath, string $commitRef): void
+    {
+        $process = $this->createProcess([
+            'git',
+            'worktree',
+            'add',
+            '--detach',
+            $worktreePath,
+            $commitRef,
+        ]);
+        $process->run();
+
+        if (!$process->isSuccessful()) {
+            throw new RuntimeException(sprintf('Failed to create worktree for "%s": %s', $commitRef, trim($process->getErrorOutput() ?: $process->getOutput())));
+        }
+    }
+
+    public function removeWorktree(string $worktreePath): void
+    {
+        $process = $this->createProcess([
+            'git',
+            'worktree',
+            'remove',
+            '--force',
+            $worktreePath,
+        ]);
+        $process->run();
+
+        if (is_dir($worktreePath)) {
+            (new Process(['rm', '-rf', $worktreePath]))->run();
+            $this->createProcess(['git', 'worktree', 'prune'])->run();
+        }
+    }
+
     public function resolveCommitSha(string $ref): string
     {
         $sha = $this->tryResolveCommitSha($ref);
