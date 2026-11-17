@@ -15,7 +15,7 @@ final readonly class ConsoleFormatter
     {
         $project = $diff->current->project;
 
-        if (!$diff->hasBaseline() || $diff->baseline === null) {
+        if ($diff->baseline === null) {
             $output->writeln(sprintf(
                 '<info>Coverage:</info> <options=bold>%.2f%%</> (%d/%d statements) — <comment>no baseline note found</comment>',
                 $project->percentage,
@@ -67,7 +67,7 @@ final readonly class ConsoleFormatter
             };
             $stmtsStr = $itemDiff->current !== null
                 ? sprintf('%d/%d', $itemDiff->current->covered, $itemDiff->current->statements)
-                : sprintf('was %d/%d', $itemDiff->baseline?->covered ?? 0, $itemDiff->baseline?->statements ?? 0);
+                : sprintf('was %d/%d', $itemDiff->baseline->covered ?? 0, $itemDiff->baseline->statements ?? 0);
 
             $table->addRow([
                 $statusLabel,

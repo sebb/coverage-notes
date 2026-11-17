@@ -76,7 +76,7 @@ final readonly class CompareCommand
         }
 
         $resolvedBaseline = $storage->resolveBaseline($base, $strategy, $ref);
-        $commitsBehind = $resolvedBaseline?->commitsBehindTarget ?? 0;
+        $commitsBehind = $resolvedBaseline->commitsBehindTarget ?? 0;
 
         $diff = $this->differ->diff(
             current: $current,

@@ -14,7 +14,7 @@ final readonly class MarkdownFormatter
         $project = $diff->current->project;
         $lines = ['### Coverage Evolution'];
 
-        if (!$diff->hasBaseline() || $diff->baseline === null) {
+        if ($diff->baseline === null) {
             $lines[] = '';
             $lines[] = sprintf(
                 '**Overall:** **%.2f%%** (`%d/%d` statements) — *No baseline coverage note found.*',
@@ -71,7 +71,7 @@ final readonly class MarkdownFormatter
             };
             $stmtsStr = $itemDiff->current !== null
                 ? sprintf('`%d/%d`', $itemDiff->current->covered, $itemDiff->current->statements)
-                : sprintf('was `%d/%d`', $itemDiff->baseline?->covered ?? 0, $itemDiff->baseline?->statements ?? 0);
+                : sprintf('was `%d/%d`', $itemDiff->baseline->covered ?? 0, $itemDiff->baseline->statements ?? 0);
 
             $lines[] = sprintf(
                 '| %s | `%s` | %s | %s | %s | %s |',

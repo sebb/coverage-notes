@@ -58,7 +58,6 @@ final readonly class CoverageDiffer
 
             if (
                 $baseItem !== null
-                && $currItem !== null
                 && (
                     $baseItem->percentage !== $currItem->percentage
                     || $baseItem->statements !== $currItem->statements

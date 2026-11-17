@@ -18,8 +18,8 @@ final readonly class ItemDiff
         public ?ItemMetrics $baseline,
         public ?ItemMetrics $current,
     ) {
-        $basePct = $baseline?->percentage ?? 0.0;
-        $currPct = $current?->percentage ?? 0.0;
+        $basePct = $baseline->percentage ?? 0.0;
+        $currPct = $current->percentage ?? 0.0;
 
         $this->percentageDelta = match ($type) {
             ItemChangeType::Added => $currPct,
@@ -27,7 +27,7 @@ final readonly class ItemDiff
             ItemChangeType::Modified => round($currPct - $basePct, 2),
         };
 
-        $this->statementsDelta = ($current?->statements ?? 0) - ($baseline?->statements ?? 0);
-        $this->coveredDelta = ($current?->covered ?? 0) - ($baseline?->covered ?? 0);
+        $this->statementsDelta = ($current->statements ?? 0) - ($baseline->statements ?? 0);
+        $this->coveredDelta = ($current->covered ?? 0) - ($baseline->covered ?? 0);
     }
 }

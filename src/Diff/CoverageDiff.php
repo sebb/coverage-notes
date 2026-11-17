@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Sebb\CoverageNotes\Diff;
 
 use Sebb\CoverageNotes\Coverage\CoverageSummary;
-use Symfony\Component\Serializer\Attribute\Ignore;
 
 final readonly class CoverageDiff
 {
@@ -32,11 +31,5 @@ final readonly class CoverageDiff
             $this->projectStatementsDelta = null;
             $this->projectCoveredDelta = null;
         }
-    }
-
-    #[Ignore]
-    public function hasBaseline(): bool
-    {
-        return $this->baseline !== null;
     }
 }

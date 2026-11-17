@@ -11,6 +11,8 @@ use Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor;
 use Symfony\Component\PropertyInfo\PropertyInfoExtractor;
 use Symfony\Component\Serializer\Encoder\JsonEncode;
 use Symfony\Component\Serializer\Encoder\JsonEncoder;
+use Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactory;
+use Symfony\Component\Serializer\Mapping\Loader\AttributeLoader;
 use Symfony\Component\Serializer\NameConverter\CamelCaseToSnakeCaseNameConverter;
 use Symfony\Component\Serializer\Normalizer\ArrayDenormalizer;
 use Symfony\Component\Serializer\Normalizer\BackedEnumNormalizer;
@@ -65,6 +67,7 @@ final readonly class CoverageSerializer
         );
 
         $objectNormalizer = new ObjectNormalizer(
+            classMetadataFactory: new ClassMetadataFactory(new AttributeLoader()),
             nameConverter: new CamelCaseToSnakeCaseNameConverter(),
             propertyTypeExtractor: $propertyTypeExtractor,
         );

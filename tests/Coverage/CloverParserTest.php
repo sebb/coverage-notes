@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Sebb\CoverageNotes\Tests\Coverage;
 
+use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 use Sebb\CoverageNotes\Coverage\CloverParser;
+use Sebb\CoverageNotes\Coverage\ItemMetrics;
 use Sebb\CoverageNotes\Serializer\CoverageSerializer;
 
 final class CloverParserTest extends TestCase
@@ -56,5 +58,71 @@ final class CloverParserTest extends TestCase
 
         $rehydrated = $serializer->deserializeSummary($json);
         self::assertEquals($summary, $rehydrated);
+    }
+
+    public function testParseFileReadsDiskAndThrowsForMissingFile(): void
+    {
+        $tempFile = sys_get_temp_dir() . '/clover-parser-test-' . bin2hex(random_bytes(4)) . '.xml';
+        file_put_contents($tempFile, <<<'XML'
+        <?xml version="1.0" encoding="UTF-8"?>
+        <coverage generated="1700000000">
+          <project timestamp="1700000000">
+            <file name="/outside/path/script.php">
+              <metrics statements="20" coveredstatements="15"/>
+            </file>
+            <file name="/app/src/NoMetrics.php"/>
+            <file name="/app/src/DuplicateA.php">
+              <class name="\App\SharedClass">
+                <metrics statements="5" coveredstatements="2"/>
+              </class>
+              <metrics statements="5" coveredstatements="2"/>
+            </file>
+            <file name="/app/src/DuplicateB.php">
+              <class name="App\SharedClass">
+                <metrics statements="15" coveredstatements="13"/>
+              </class>
+              <metrics statements="15" coveredstatements="13"/>
+            </file>
+            <metrics statements="40" coveredstatements="30"/>
+          </project>
+        </coverage>
+        XML);
+
+        try {
+            $parser = new CloverParser();
+            $summary = $parser->parseFile($tempFile, '/app');
+
+            self::assertSame(75.0, $summary->project->percentage);
+            self::assertCount(2, $summary->items);
+            self::assertArrayHasKey('/outside/path/script.php', $summary->items);
+            self::assertSame(20, $summary->items['App\SharedClass']->statements);
+            self::assertSame(15, $summary->items['App\SharedClass']->covered);
+            self::assertSame(75.0, $summary->items['App\SharedClass']->percentage);
+        } finally {
+            @unlink($tempFile);
+        }
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('does not exist or is not readable');
+        (new CloverParser())->parseFile('/non-existent/coverage.xml');
+    }
+
+    public function testThrowsOnInvalidXml(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Invalid Clover XML content.');
+        (new CloverParser())->parseXml('<not-valid-xml');
+    }
+
+    public function testThrowsWhenProjectMetricsMissing(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Clover XML is missing <project><metrics> element.');
+        (new CloverParser())->parseXml('<coverage><project/></coverage>');
+    }
+
+    public function testCalculatePercentageReturns100WhenNoStatements(): void
+    {
+        self::assertSame(100.0, ItemMetrics::calculatePercentage(0, 0));
     }
 }
