@@ -3,6 +3,7 @@
 
 declare(strict_types=1);
 
+use Composer\InstalledVersions;
 use Sebb\CoverageNotes\Command\BackfillCommand;
 use Sebb\CoverageNotes\Command\CompareCommand;
 use Sebb\CoverageNotes\Command\HistoryCommand;
@@ -28,7 +29,14 @@ if (!$loaded) {
     exit(1);
 }
 
-$application = new Application('coverage-notes', '0.1.0');
+$version = '@git_version@';
+if (str_starts_with($version, '@')) {
+    $version = class_exists(InstalledVersions::class) && InstalledVersions::isInstalled('sebb/coverage-notes')
+        ? (InstalledVersions::getPrettyVersion('sebb/coverage-notes') ?? 'dev')
+        : 'dev';
+}
+
+$application = new Application('coverage-notes', $version);
 $application->addCommands([
     new RecordCommand(),
     new CompareCommand(),

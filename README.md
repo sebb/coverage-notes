@@ -17,6 +17,37 @@ Because Git stores notes outside `refs/heads/*` and `refs/tags/*`, normal `git c
 - **PHP 8.4+** (`ext-json`, `ext-simplexml`)
 - **Git**
 
+## Installation
+
+### Standalone PHAR (GitHub Releases)
+
+Download `coverage-notes.phar` (and optionally verify its checksum with `coverage-notes.phar.sha256`) from the [Releases](https://github.com/sebb/coverage-notes/releases) page:
+
+```bash
+curl -fsSLO https://github.com/sebb/coverage-notes/releases/latest/download/coverage-notes.phar
+curl -fsSLO https://github.com/sebb/coverage-notes/releases/latest/download/coverage-notes.phar.sha256
+sha256sum -c coverage-notes.phar.sha256
+chmod +x coverage-notes.phar
+mv coverage-notes.phar /usr/local/bin/coverage-notes
+```
+
+### Composer
+
+```bash
+composer require --dev sebb/coverage-notes
+```
+
+### Build PHAR from Source
+
+With [`humbug/box`](https://github.com/box-project/box) installed:
+
+```bash
+composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+composer build:phar
+```
+
+This outputs `build/coverage-notes.phar`.
+
 ## GitHub Actions Usage
 
 Use the composite action directly in your workflow after running PHPUnit with `--coverage-clover=coverage.xml`:

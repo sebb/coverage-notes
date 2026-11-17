@@ -1,0 +1,6 @@
+{
+    "output": "build/coverage-notes.phar",
+    "compression": "GZ",
+    "check-requirements": false,
+    "git-version": "git_version"
+}
