@@ -52,11 +52,13 @@ final readonly class RecordCommand
             $summary = $this->parser->parseFile($cloverFile, $effectiveWorkspace);
         } catch (Throwable $e) {
             $output->writeln(sprintf('<error>%s</error>', $e->getMessage()));
+
             return Command::FAILURE;
         }
 
         if ($dryRun) {
             $output->write($this->serializer->serializeSummary($summary));
+
             return Command::SUCCESS;
         }
 
@@ -83,6 +85,7 @@ final readonly class RecordCommand
             }
         } catch (Throwable $e) {
             $output->writeln(sprintf('<error>%s</error>', $e->getMessage()));
+
             return Command::FAILURE;
         }
 

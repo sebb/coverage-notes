@@ -22,6 +22,7 @@ final readonly class ConsoleFormatter
                 $project->covered,
                 $project->statements,
             ));
+
             return;
         }
 
@@ -42,6 +43,7 @@ final readonly class ConsoleFormatter
 
         if ($diff->changedItems === []) {
             $output->writeln('No item-level coverage changes.');
+
             return;
         }
 

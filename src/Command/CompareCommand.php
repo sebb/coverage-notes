@@ -66,6 +66,7 @@ final readonly class CompareCommand
             $current = $this->parser->parseFile($cloverFile, $effectiveWorkspace);
         } catch (Throwable $e) {
             $errorOutput->writeln(sprintf('<error>%s</error>', $e->getMessage()));
+
             return Command::FAILURE;
         }
 
@@ -97,6 +98,7 @@ final readonly class CompareCommand
                 $current->project->percentage,
                 $failUnder,
             ));
+
             return Command::FAILURE;
         }
 
@@ -110,6 +112,7 @@ final readonly class CompareCommand
                     $current->project->percentage,
                     $allowedDrop,
                 ));
+
                 return Command::FAILURE;
             }
         }

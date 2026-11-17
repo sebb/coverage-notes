@@ -20,6 +20,7 @@
         "symfony/serializer": "^8.1"
     },
     "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3.95",
         "phpstan/phpstan": "^2.3",
         "phpunit/phpunit": "^13.4"
     },
@@ -37,9 +38,11 @@
         "bin/coverage-notes"
     ],
     "scripts": {
+        "cs:check": "php-cs-fixer fix --dry-run --diff",
+        "cs:fix": "php-cs-fixer fix",
+        "phpstan": "phpstan analyse",
         "test": "phpunit",
-        "test:coverage": "XDEBUG_MODE=coverage phpunit --coverage-clover=coverage.xml",
-        "phpstan": "phpstan analyse"
+        "test:coverage": "XDEBUG_MODE=coverage phpunit --coverage-clover=coverage.xml"
     },
     "config": {
         "sort-packages": true

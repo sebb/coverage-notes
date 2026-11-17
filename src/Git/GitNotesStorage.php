@@ -54,11 +54,7 @@ final readonly class GitNotesStorage
         $process->run();
 
         if (!$process->isSuccessful()) {
-            throw new RuntimeException(sprintf(
-                'Failed to write git note on "%s": %s',
-                $commitSha,
-                trim($process->getErrorOutput() ?: $process->getOutput()),
-            ));
+            throw new RuntimeException(sprintf('Failed to write git note on "%s": %s', $commitSha, trim($process->getErrorOutput() ?: $process->getOutput())));
         }
 
         return $commitSha;
@@ -100,12 +96,7 @@ final readonly class GitNotesStorage
         $pushProcess->run();
 
         if (!$pushProcess->isSuccessful()) {
-            throw new RuntimeException(sprintf(
-                'Failed to push git notes ref "%s" to "%s": %s',
-                $normalizedRef,
-                $remote,
-                trim($pushProcess->getErrorOutput() ?: $pushProcess->getOutput()),
-            ));
+            throw new RuntimeException(sprintf('Failed to push git notes ref "%s" to "%s": %s', $normalizedRef, $remote, trim($pushProcess->getErrorOutput() ?: $pushProcess->getOutput())));
         }
     }
 
@@ -175,7 +166,7 @@ final readonly class GitNotesStorage
 
         $commits = array_values(array_filter(
             array_map('trim', explode("\n", $revListProcess->getOutput())),
-            static fn(string $line): bool => $line !== '',
+            static fn (string $line): bool => $line !== '',
         ));
 
         foreach ($commits as $index => $sha) {
@@ -215,16 +206,12 @@ final readonly class GitNotesStorage
         $process->run();
 
         if (!$process->isSuccessful()) {
-            throw new RuntimeException(sprintf(
-                'Failed to read git log for "%s": %s',
-                $branchRef,
-                trim($process->getErrorOutput() ?: $process->getOutput()),
-            ));
+            throw new RuntimeException(sprintf('Failed to read git log for "%s": %s', $branchRef, trim($process->getErrorOutput() ?: $process->getOutput())));
         }
 
         $lines = array_filter(
             explode("\n", trim($process->getOutput())),
-            static fn(string $line): bool => $line !== '',
+            static fn (string $line): bool => $line !== '',
         );
 
         $entries = [];
