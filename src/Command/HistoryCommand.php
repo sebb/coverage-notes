@@ -46,11 +46,13 @@ final readonly class HistoryCommand
             $entries = $storage->getHistory(max(1, $limit), $branch, $ref);
         } catch (Throwable $e) {
             $output->writeln(sprintf('<error>%s</error>', $e->getMessage()));
+
             return Command::FAILURE;
         }
 
         if ($entries === []) {
             $output->writeln('<comment>No commits found.</comment>');
+
             return Command::SUCCESS;
         }
 

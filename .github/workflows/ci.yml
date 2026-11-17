@@ -33,6 +33,9 @@ jobs:
       - name: Install dependencies
         run: composer install --no-interaction --prefer-dist
 
+      - name: Check code style
+        run: composer cs:check
+
       - name: Run static analysis
         run: composer phpstan
 
