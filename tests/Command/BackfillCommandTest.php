@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace Sebb\CoverageNotes\Tests\Command;
 
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
 use Sebb\CoverageNotes\Command\BackfillCommand;
 use Sebb\CoverageNotes\Coverage\CoverageSummary;
 use Sebb\CoverageNotes\Coverage\ItemMetrics;
+use Sebb\CoverageNotes\Git\BaselineResolutionStrategy;
 use Sebb\CoverageNotes\Git\GitNotesStorage;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
@@ -34,8 +36,9 @@ final class BackfillCommandTest extends TestCase
         $this->runGit(['config', 'user.email', 'test@example.com']);
         $this->runGit(['remote', 'add', 'origin', $this->tempRemoteDir]);
 
-        // Create an untracked vendor directory to verify symlink creation inside worktrees
+        // Create an untracked vendor directory and a nested subdirectory to test getRepositoryRoot()
         mkdir($this->tempRepoDir . '/vendor', 0777, true);
+        mkdir($this->tempRepoDir . '/src/Sub', 0777, true);
         file_put_contents($this->tempRepoDir . '/.gitignore', "/vendor/\n");
         $this->runGit(['add', '.gitignore']);
         $this->runGit(['commit', '-m', 'Add gitignore']);
@@ -48,45 +51,65 @@ final class BackfillCommandTest extends TestCase
         }
     }
 
-    public function testBackfillsMissingCommitsSkipsFailuresAndSupportsForceAndPush(): void
+    public function testBackfillsFromSubdirectoryTracksClassChangesAndHandlesErrors(): void
     {
+        $subDir = $this->tempRepoDir . '/src/Sub';
+        $subDirStorage = new GitNotesStorage($subDir);
         $storage = new GitNotesStorage($this->tempRepoDir);
 
-        // Commit 1 (oldest of the 3): marker causes command to fail without generating coverage.xml
-        file_put_contents($this->tempRepoDir . '/fail.txt', 'fail');
-        $this->runGit(['add', 'fail.txt']);
+        // Commit 1: fails the test command without generating coverage.xml
+        file_put_contents($this->tempRepoDir . '/state.txt', 'fail');
+        $this->runGit(['add', 'state.txt']);
         $this->runGit(['commit', '-m', 'Failing commit']);
         $failingSha = $this->runGit(['rev-parse', 'HEAD']);
 
-        // Commit 2: missing note, should be backfilled with 80% coverage
-        unlink($this->tempRepoDir . '/fail.txt');
-        file_put_contents($this->tempRepoDir . '/metrics.txt', '80');
-        $this->runGit(['add', '-A']);
-        $this->runGit(['commit', '-m', 'Missing note commit']);
-        $missingSha = $this->runGit(['rev-parse', 'HEAD']);
+        // Commit 2: generates invalid XML (exercises exception handling during parsing)
+        file_put_contents($this->tempRepoDir . '/state.txt', 'invalid-xml');
+        $this->runGit(['add', 'state.txt']);
+        $this->runGit(['commit', '-m', 'Invalid XML commit']);
+        $invalidXmlSha = $this->runGit(['rev-parse', 'HEAD']);
 
-        // Commit 3: already has a note (90%), should be skipped unless --force is passed
-        file_put_contents($this->tempRepoDir . '/metrics.txt', '95');
-        $this->runGit(['add', 'metrics.txt']);
-        $this->runGit(['commit', '-m', 'Existing note commit']);
-        $existingSha = $this->runGit(['rev-parse', 'HEAD']);
-        $storage->recordNote(new CoverageSummary(new ItemMetrics(100, 90)), $existingSha);
+        // Commit 3: missing note, Calculator has 50% coverage (10/20 statements)
+        file_put_contents($this->tempRepoDir . '/state.txt', '10');
+        $this->runGit(['add', 'state.txt']);
+        $this->runGit(['commit', '-m', 'Calculator at 50 percent']);
+        $calc50Sha = $this->runGit(['rev-parse', 'HEAD']);
+
+        // Commit 4: already has a pre-existing 90% note, while working tree state is 20/20 (100%)
+        file_put_contents($this->tempRepoDir . '/state.txt', '20');
+        $this->runGit(['add', 'state.txt']);
+        $this->runGit(['commit', '-m', 'Calculator at 100 percent']);
+        $calc100Sha = $this->runGit(['rev-parse', 'HEAD']);
+        $storage->recordNote(new CoverageSummary(new ItemMetrics(20, 18)), $calc100Sha);
 
         $this->runGit(['push', '-u', 'origin', 'main']);
 
         $cmd = <<<'SH'
-        if [ -f fail.txt ]; then exit 1; fi
+        STATE=$(cat state.txt)
+        if [ "$STATE" = "fail" ]; then exit 1; fi
         if [ ! -d vendor ] || [ -L vendor ]; then exit 1; fi
-        COV=$(cat metrics.txt)
+        if [ "$STATE" = "invalid-xml" ]; then
+          echo "not-xml" > coverage.xml
+          exit 0
+        fi
         cat <<XML > coverage.xml
         <?xml version="1.0" encoding="UTF-8"?>
-        <coverage><project><metrics statements="100" coveredstatements="$COV"/></project></coverage>
+        <coverage>
+          <project>
+            <file name="$(pwd)/src/Calculator.php">
+              <class name="App\\Service\\Calculator"><metrics statements="20" coveredstatements="$STATE"/></class>
+              <metrics statements="20" coveredstatements="$STATE"/>
+            </file>
+            <metrics statements="20" coveredstatements="$STATE"/>
+          </project>
+        </coverage>
         XML
         SH;
 
-        $tester = new CommandTester(new BackfillCommand(storage: $storage));
+        // Run from subdirectory to confirm repository root resolution locates <repo-root>/vendor
+        $tester = new CommandTester(new BackfillCommand(storage: $subDirStorage));
         $exitCode = $tester->execute([
-            '--limit' => '3',
+            '--limit' => '4',
             '--branch' => 'main',
             '--command' => $cmd,
             '--push' => true,
@@ -96,19 +119,23 @@ final class BackfillCommandTest extends TestCase
         $display = $tester->getDisplay();
         self::assertStringContainsString('Skipping', $display);
         self::assertStringContainsString('Failing commit', $display);
-        self::assertStringContainsString('Recorded coverage note on', $display);
-        self::assertStringContainsString('Missing note commit', $display);
-        self::assertStringContainsString('80.00%', $display);
+        self::assertStringContainsString('Invalid XML commit', $display);
+        self::assertStringContainsString('Calculator at 50 percent', $display);
+        self::assertStringContainsString('50.00%', $display);
         self::assertStringContainsString('Pushed refs/notes/coverage to origin.', $display);
 
         self::assertNull($storage->readNote($failingSha));
-        $missingNote = $storage->readNote($missingSha);
-        self::assertNotNull($missingNote);
-        self::assertSame(80.0, $missingNote->project->percentage);
-        // Existing note was untouched (90.0%, not recomputed to 95.0%)
-        $existingNote = $storage->readNote($existingSha);
-        self::assertNotNull($existingNote);
-        self::assertSame(90.0, $existingNote->project->percentage);
+        self::assertNull($storage->readNote($invalidXmlSha));
+
+        $calc50Note = $storage->readNote($calc50Sha);
+        self::assertNotNull($calc50Note);
+        self::assertSame(50.0, $calc50Note->project->percentage);
+        self::assertSame(50.0, $calc50Note->items['App\Service\Calculator']->percentage);
+
+        // Pre-existing note was preserved (90.0%) when --force is not passed
+        $calc100Note = $storage->readNote($calc100Sha);
+        self::assertNotNull($calc100Note);
+        self::assertSame(90.0, $calc100Note->project->percentage);
 
         // Running again on the latest 2 commits reports that all already have notes
         $noopExit = $tester->execute([
@@ -120,7 +147,7 @@ final class BackfillCommandTest extends TestCase
         self::assertSame(Command::SUCCESS, $noopExit);
         self::assertStringContainsString('All inspected commits already have coverage notes.', $tester->getDisplay());
 
-        // Running with --force recomputes existing note (90% -> 95%)
+        // Running with --force recomputes Calculator at 100% (18/20 -> 20/20)
         $forceExit = $tester->execute([
             '--limit' => '1',
             '--branch' => 'main',
@@ -129,32 +156,68 @@ final class BackfillCommandTest extends TestCase
             '--no-fetch' => true,
         ]);
         self::assertSame(Command::SUCCESS, $forceExit);
-        $recomputedNote = (new GitNotesStorage($this->tempRepoDir))->readNote($existingSha);
+        $recomputedNote = (new GitNotesStorage($this->tempRepoDir))->readNote($calc100Sha);
         self::assertNotNull($recomputedNote);
-        self::assertSame(95.0, $recomputedNote->project->percentage);
+        self::assertSame(100.0, $recomputedNote->project->percentage);
+        self::assertSame(100.0, $recomputedNote->items['App\Service\Calculator']->percentage);
 
         // Verify pushed notes exist in remote by deleting local ref and fetching from origin
         $this->runGit(['update-ref', '-d', 'refs/notes/coverage']);
         $freshStorage = new GitNotesStorage($this->tempRepoDir);
-        self::assertNull($freshStorage->readNote($missingSha));
+        self::assertNull($freshStorage->readNote($calc50Sha));
         self::assertTrue($freshStorage->fetchNotes());
-        $fetchedNote = (new GitNotesStorage($this->tempRepoDir))->readNote($missingSha);
+        $fetchedNote = (new GitNotesStorage($this->tempRepoDir))->readNote($calc50Sha);
         self::assertNotNull($fetchedNote);
-        self::assertSame(80.0, $fetchedNote->project->percentage);
+        self::assertSame(50.0, $fetchedNote->project->percentage);
+
+        // Verify push failure returns Command::FAILURE
+        $pushFailExit = $tester->execute([
+            '--limit' => '1',
+            '--branch' => 'main',
+            '--command' => $cmd,
+            '--force' => true,
+            '--no-fetch' => true,
+            '--push' => true,
+            '--remote' => 'nonexistent-remote',
+        ]);
+        self::assertSame(Command::FAILURE, $pushFailExit);
+        self::assertStringContainsString('Failed to push git notes ref', $tester->getDisplay());
     }
 
-    public function testFailsWhenBranchDoesNotExist(): void
+    public function testAbortsWhenFetchFailsAndHandlesInvalidBranchAndWorktreeErrors(): void
     {
         $storage = new GitNotesStorage($this->tempRepoDir);
         $tester = new CommandTester(new BackfillCommand(storage: $storage));
 
-        $exitCode = $tester->execute([
+        // Fetch failure against nonexistent remote aborts before inspecting history
+        $fetchFailExit = $tester->execute([
+            '--remote' => 'nonexistent-remote',
+        ]);
+        self::assertSame(Command::FAILURE, $fetchFailExit);
+        self::assertStringContainsString('Failed to synchronize coverage notes from remote "nonexistent-remote".', $tester->getDisplay());
+
+        // Invalid branch fails cleanly
+        $invalidBranchExit = $tester->execute([
             '--branch' => 'non-existent-branch',
             '--no-fetch' => true,
         ]);
-
-        self::assertSame(Command::FAILURE, $exitCode);
+        self::assertSame(Command::FAILURE, $invalidBranchExit);
         self::assertStringContainsString('Failed to read git log', $tester->getDisplay());
+
+        // Non-git directory falls back cleanly in getRepositoryRoot() and removeWorktree() cleans up orphan directories
+        $nonGitDir = $this->tempRootDir . '/non-git';
+        mkdir($nonGitDir, 0777, true);
+        self::assertSame($nonGitDir, (new GitNotesStorage($nonGitDir))->getRepositoryRoot());
+        $storage->removeWorktree($nonGitDir);
+        self::assertDirectoryDoesNotExist($nonGitDir);
+
+        // Full refs/notes/... prefix is handled cleanly by normalizeNotesRef(), and missing notes resolve to null
+        self::assertTrue($storage->fetchNotes('refs/notes/coverage'));
+        self::assertNull($storage->resolveBaseline('HEAD', BaselineResolutionStrategy::MergeBase));
+
+        // Adding a worktree for an invalid ref throws RuntimeException
+        $this->expectException(RuntimeException::class);
+        $storage->addWorktree($this->tempRootDir . '/bad-worktree', 'nonexistent-commit');
     }
 
     /**

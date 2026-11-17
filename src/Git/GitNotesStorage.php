@@ -22,15 +22,32 @@ final readonly class GitNotesStorage
     public function fetchNotes(string $notesRef = self::DEFAULT_NOTES_REF, string $remote = 'origin'): bool
     {
         $normalizedRef = $this->normalizeNotesRef($notesRef);
-        $process = $this->createProcess([
+        $remoteTrackingRef = sprintf('refs/notes/origin-%s', ltrim($notesRef, '/'));
+
+        $fetchProcess = $this->createProcess([
             'git',
             'fetch',
             $remote,
-            sprintf('%s:%s', $normalizedRef, $normalizedRef),
+            sprintf('+%s:%s', $normalizedRef, $remoteTrackingRef),
         ]);
-        $process->run();
+        $fetchProcess->run();
 
-        return $process->isSuccessful();
+        if (!$fetchProcess->isSuccessful()) {
+            return str_contains($fetchProcess->getErrorOutput(), "couldn't find remote ref");
+        }
+
+        $mergeProcess = $this->createProcess([
+            'git',
+            'notes',
+            sprintf('--ref=%s', $notesRef),
+            'merge',
+            '-s',
+            'ours',
+            $remoteTrackingRef,
+        ]);
+        $mergeProcess->run();
+
+        return $mergeProcess->isSuccessful();
     }
 
     public function recordNote(
@@ -63,29 +80,7 @@ final readonly class GitNotesStorage
     public function pushNotes(string $notesRef = self::DEFAULT_NOTES_REF, string $remote = 'origin'): void
     {
         $normalizedRef = $this->normalizeNotesRef($notesRef);
-
-        // Fetch remote notes into a temporary ref and merge with local notes to avoid non-fast-forward failures
-        $remoteTrackingRef = sprintf('refs/notes/origin-%s', ltrim($notesRef, '/'));
-        $fetchProcess = $this->createProcess([
-            'git',
-            'fetch',
-            $remote,
-            sprintf('%s:%s', $normalizedRef, $remoteTrackingRef),
-        ]);
-        $fetchProcess->run();
-
-        if ($fetchProcess->isSuccessful()) {
-            $mergeProcess = $this->createProcess([
-                'git',
-                'notes',
-                sprintf('--ref=%s', $notesRef),
-                'merge',
-                '-s',
-                'ours',
-                $remoteTrackingRef,
-            ]);
-            $mergeProcess->run();
-        }
+        $this->fetchNotes($notesRef, $remote);
 
         $pushProcess = $this->createProcess([
             'git',
@@ -234,8 +229,15 @@ final readonly class GitNotesStorage
         return $entries;
     }
 
-    public function getWorkingDirectory(): string
+    public function getRepositoryRoot(): string
     {
+        $process = $this->createProcess(['git', 'rev-parse', '--show-toplevel']);
+        $process->run();
+
+        if ($process->isSuccessful()) {
+            return trim($process->getOutput());
+        }
+
         return $this->workingDirectory ?? (getcwd() ?: '.');
     }
 

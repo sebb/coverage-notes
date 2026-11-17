@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Sebb\CoverageNotes\Command;
 
+use RuntimeException;
 use Sebb\CoverageNotes\Coverage\CloverParser;
 use Sebb\CoverageNotes\Git\GitNotesStorage;
 use Sebb\CoverageNotes\Git\HistoryEntry;
@@ -50,8 +51,8 @@ final readonly class BackfillCommand
         $storage = $this->storage ?? new GitNotesStorage();
 
         try {
-            if ($fetch) {
-                $storage->fetchNotes($ref, $remote);
+            if ($fetch && !$storage->fetchNotes($ref, $remote)) {
+                throw new RuntimeException(sprintf('Failed to synchronize coverage notes from remote "%s".', $remote));
             }
 
             $entries = $storage->getHistory(max(1, $limit), $branch, $ref);
@@ -73,19 +74,15 @@ final readonly class BackfillCommand
         }
 
         $recordedCount = 0;
+        $repositoryRoot = $storage->getRepositoryRoot();
 
         foreach ($targets as $entry) {
             $worktreeDir = sys_get_temp_dir() . '/coverage-notes-worktree-' . bin2hex(random_bytes(6));
 
             try {
                 $storage->addWorktree($worktreeDir, $entry->commitSha);
-            } catch (Throwable $e) {
-                $output->writeln(sprintf('<comment>Skipping %s (%s): %s</comment>', $entry->shortSha, $entry->subject, $e->getMessage()));
-                continue;
-            }
 
-            try {
-                $vendorDir = $storage->getWorkingDirectory() . '/vendor';
+                $vendorDir = $repositoryRoot . '/vendor';
                 $worktreeVendor = $worktreeDir . '/vendor';
                 if (!is_dir($worktreeVendor) && !is_link($worktreeVendor) && is_dir($vendorDir)) {
                     (new Process(['cp', '-a', $vendorDir, $worktreeVendor]))->run();
