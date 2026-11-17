@@ -112,7 +112,7 @@ In the default `auto` mode, the action:
 
 ### `.gitlab-ci.yml` Configuration
 
-Download the standalone PHAR (or run `vendor/bin/coverage-notes` if installed via Composer), compare coverage on every pipeline, and record coverage notes on pushes to the default branch:
+Using a CI image with PHP 8.4+, Git, Composer, and a coverage driver (`pcov` or `xdebug`) preinstalled (or installing them in `before_script`), download the standalone PHAR (or run `vendor/bin/coverage-notes` if installed via Composer), compare coverage on every pipeline, and record coverage notes on pushes to the default branch:
 
 ```yaml
 stages:
@@ -120,10 +120,13 @@ stages:
 
 test:
   stage: test
+  # Ensure the image includes PHP 8.4+, git, composer, and pcov or xdebug
   image: php:8.4-cli
   variables:
     GIT_DEPTH: 0
+    XDEBUG_MODE: coverage
   before_script:
+    - composer install --no-interaction --prefer-dist
     - curl -fsSL -o /usr/local/bin/coverage-notes https://github.com/sebb/coverage-notes/releases/download/v0.2.0/coverage-notes.phar
     - chmod +x /usr/local/bin/coverage-notes
   script:
@@ -156,11 +159,21 @@ To post or update a sticky coverage summary comment on Merge Requests, add a mas
     - |
       if [ -n "${CI_MERGE_REQUEST_IID:-}" ] && [ -n "${GITLAB_TOKEN:-}" ]; then
         NOTES_URL="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/merge_requests/${CI_MERGE_REQUEST_IID}/notes"
-        NOTE_ID="$(
-          curl -fsSL -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" "${NOTES_URL}?per_page=100" \
-            | jq -r '.[] | select((.body // "") | startswith("<!-- coverage-notes-report -->\n")) | .id' \
-            | head -n 1
-        )"
+        BOT_USER_ID="$(curl -fsSL -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" "${CI_API_V4_URL}/user" | jq -r '.id')"
+        NOTE_ID=""
+        PAGE=1
+        while :; do
+          NOTES_PAGE="$(curl -fsSL -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" "${NOTES_URL}?per_page=100&sort=asc&page=${PAGE}")"
+          NOTE_ID="$(
+            printf '%s\n' "$NOTES_PAGE" \
+              | jq -r --argjson uid "$BOT_USER_ID" '.[] | select(.author.id == $uid and ((.body // "") | startswith("<!-- coverage-notes-report -->\n"))) | .id' \
+              | head -n 1
+          )"
+          if [ -n "$NOTE_ID" ] || [ "$(printf '%s\n' "$NOTES_PAGE" | jq 'length')" -eq 0 ]; then
+            break
+          fi
+          PAGE=$((PAGE + 1))
+        done
         PAYLOAD="$(jq -Rs --arg marker '<!-- coverage-notes-report -->' '{body: ($marker + "\n" + .)}' coverage-report.md)"
         if [ -n "$NOTE_ID" ]; then
           curl -fsSL -X PUT -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" -H "Content-Type: application/json" -d "$PAYLOAD" "${NOTES_URL}/${NOTE_ID}" > /dev/null
