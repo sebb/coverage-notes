@@ -101,6 +101,83 @@ In the default `auto` mode, the action:
 | `pr-comment` | `false` | Post or update a sticky coverage report comment on pull requests (`true` or `false`) |
 | `github-token` | `${{ github.token }}` | GitHub token used to post or update pull request comments |
 
+## GitLab CI Usage
+
+### Repository & Token Setup
+
+1. Ensure Git history is available in CI jobs by setting `GIT_DEPTH: 0` (required for `git merge-base` and baseline history lookup).
+2. Grant CI permission to push `refs/notes/coverage` on your default branch using either option:
+   - **CI/CD Job Token (GitLab 17.2+):** Enable **Settings ➔ CI/CD ➔ Job token permissions ➔ Allow Git push requests to the repository** (no extra token variable needed for pushing notes).
+   - **Project Access Token:** Create a Project Access Token with the **Maintainer** role and `write_repository` scope (or `api` scope if you also want sticky Merge Request comments), and store it as a masked CI/CD variable named `GITLAB_TOKEN`.
+
+### `.gitlab-ci.yml` Configuration
+
+Download the standalone PHAR (or run `vendor/bin/coverage-notes` if installed via Composer), compare coverage on every pipeline, and record coverage notes on pushes to the default branch:
+
+```yaml
+stages:
+  - test
+
+test:
+  stage: test
+  image: php:8.4-cli
+  variables:
+    GIT_DEPTH: 0
+  before_script:
+    - curl -fsSL -o /usr/local/bin/coverage-notes https://github.com/sebb/coverage-notes/releases/download/v0.2.0/coverage-notes.phar
+    - chmod +x /usr/local/bin/coverage-notes
+  script:
+    - vendor/bin/phpunit --coverage-clover=coverage.xml
+    - BASE_BRANCH="${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-$CI_DEFAULT_BRANCH}"
+    - git fetch origin "$BASE_BRANCH:refs/remotes/origin/$BASE_BRANCH"
+    - coverage-notes compare coverage.xml --base="origin/$BASE_BRANCH" --max-drop=0
+    - |
+      if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
+        git config user.name "gitlab-ci"
+        git config user.email "ci@example.com"
+        git remote set-url origin "https://gitlab-ci-token:${GITLAB_TOKEN:-$CI_JOB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+        coverage-notes record coverage.xml --push
+      fi
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+```
+
+### Optional: Merge Request Coverage Comment
+
+To post or update a sticky coverage summary comment on Merge Requests, add a masked `GITLAB_TOKEN` variable with `api` scope (`curl` and `jq` required), generate Markdown output before enforcing thresholds, and publish via the GitLab Notes API:
+
+```yaml
+  script:
+    - vendor/bin/phpunit --coverage-clover=coverage.xml
+    - BASE_BRANCH="${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-$CI_DEFAULT_BRANCH}"
+    - git fetch origin "$BASE_BRANCH:refs/remotes/origin/$BASE_BRANCH"
+    - coverage-notes compare coverage.xml --base="origin/$BASE_BRANCH" --format=markdown > coverage-report.md
+    - |
+      if [ -n "${CI_MERGE_REQUEST_IID:-}" ] && [ -n "${GITLAB_TOKEN:-}" ]; then
+        NOTES_URL="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/merge_requests/${CI_MERGE_REQUEST_IID}/notes"
+        NOTE_ID="$(
+          curl -fsSL -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" "${NOTES_URL}?per_page=100" \
+            | jq -r '.[] | select((.body // "") | startswith("<!-- coverage-notes-report -->\n")) | .id' \
+            | head -n 1
+        )"
+        PAYLOAD="$(jq -Rs --arg marker '<!-- coverage-notes-report -->' '{body: ($marker + "\n" + .)}' coverage-report.md)"
+        if [ -n "$NOTE_ID" ]; then
+          curl -fsSL -X PUT -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" -H "Content-Type: application/json" -d "$PAYLOAD" "${NOTES_URL}/${NOTE_ID}" > /dev/null
+        else
+          curl -fsSL -X POST -H "PRIVATE-TOKEN: ${GITLAB_TOKEN}" -H "Content-Type: application/json" -d "$PAYLOAD" "$NOTES_URL" > /dev/null
+        fi
+      fi
+    - coverage-notes compare coverage.xml --base="origin/$BASE_BRANCH" --no-fetch --max-drop=0
+    - |
+      if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
+        git config user.name "gitlab-ci"
+        git config user.email "ci@example.com"
+        git remote set-url origin "https://gitlab-ci-token:${GITLAB_TOKEN:-$CI_JOB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+        coverage-notes record coverage.xml --push
+      fi
+```
+
 ## CLI Usage
 
 ### `record`
@@ -193,24 +270,6 @@ Options:
 - `--remote=REMOTE` — Git remote name (default: `origin`)
 - `--fetch` / `--no-fetch` — Fetch coverage notes before backfilling (default: `--fetch`)
 - `-p, --push` — Push updated notes back to the remote after backfilling
-
-## GitLab CI Example
-
-```yaml
-test:
-  stage: test
-  variables:
-    GIT_DEPTH: 0
-  script:
-    - vendor/bin/phpunit --coverage-clover=coverage.xml
-    - coverage-notes compare coverage.xml --base=origin/main --max-drop=0
-    - |
-      if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
-        git config user.name "gitlab-ci"
-        git config user.email "ci@example.com"
-        coverage-notes record coverage.xml --push
-      fi
-```
 
 ## License
 
