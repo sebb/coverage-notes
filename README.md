@@ -142,15 +142,15 @@ Options:
 Example Markdown output:
 
 ```markdown
-### Coverage Evolution
+### 🟢 Coverage: 85.00% (+5.00%)
 
-**Overall:** 80.00% ➔ **85.00%** (`+5.00%` vs `a1b2c3d` | `85/100` statements)
+Up from 80.00% vs `a1b2c3d` · 85/100 statements
 
-| Status | Class / File | Baseline | Current | Delta | Statements |
-| :--- | :--- | ---: | ---: | ---: | ---: |
-| 🗑️ Removed | `App\Legacy\OldHelper` | 100.00% | N/A | Removed | was `20/20` |
-| ✅ Improved | `App\Service\PaymentService` | 80.00% | 90.00% | +10.00% | `45/50` |
-| 🆕 New | `App\Validator\CouponValidator` | N/A | 100.00% | New | `20/20` |
+| Class / File | Coverage | Change | Statements |
+| :--- | ---: | :--- | ---: |
+| `App\Validator\CouponValidator` | 100.00% | 🆕 New | 20/20 |
+| `App\Service\PaymentService` | 90.00% | 🟢 **+10.00%** | 45/50 |
+| ~~`App\Legacy\OldHelper`~~ | ~~100.00%~~ | 🗑️ Removed | ~~20/20~~ |
 ```
 
 ### `history`
