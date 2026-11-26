@@ -130,7 +130,8 @@ final class GitNotesIntegrationTest extends TestCase
         ]);
         self::assertSame(Command::SUCCESS, $markdownExit);
         $markdownDisplay = $compareTester->getDisplay();
-        self::assertStringContainsString('82.00% ➔ **85.00%** (`+3.00%`', $markdownDisplay);
+        self::assertStringContainsString('### 🟢 Coverage: 85.00% (+3.00%)', $markdownDisplay);
+        self::assertStringContainsString('Up from 82.00% vs `', $markdownDisplay);
         self::assertStringContainsString('*(1 commit behind target)*', $markdownDisplay);
 
         $consoleExit = $compareTester->execute([

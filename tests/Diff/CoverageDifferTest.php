@@ -45,9 +45,10 @@ final class CoverageDifferTest extends TestCase
         self::assertSame(ItemChangeType::Added, $diff->changedItems['App\Validator\CouponValidator']->type);
 
         $markdown = (new MarkdownFormatter())->format($diff);
-        self::assertStringContainsString('**Overall:** 80.00% ➔ **85.00%** (`+5.00%` vs `a1b2c3d`', $markdown);
-        self::assertStringContainsString('| ✅ Improved | `App\Service\PaymentService` | 80.00% | 90.00% | +10.00% | `45/50` |', $markdown);
-        self::assertStringContainsString('| 🆕 New | `App\Validator\CouponValidator` | N/A | 100.00% | New | `20/20` |', $markdown);
-        self::assertStringContainsString('| 🗑️ Removed | `App\Legacy\OldHelper` | 100.00% | N/A | Removed | was `20/20` |', $markdown);
+        self::assertStringContainsString('### 🟢 Coverage: 85.00% (+5.00%)', $markdown);
+        self::assertStringContainsString('Up from 80.00% vs `a1b2c3d` · 85/100 statements', $markdown);
+        self::assertStringContainsString('| `App\Validator\CouponValidator` | 100.00% | 🆕 New | 20/20 |', $markdown);
+        self::assertStringContainsString('| `App\Service\PaymentService` | 90.00% | 🟢 **+10.00%** | 45/50 |', $markdown);
+        self::assertStringContainsString('| ~~`App\Legacy\OldHelper`~~ | ~~100.00%~~ | 🗑️ Removed | ~~20/20~~ |', $markdown);
     }
 }
