@@ -31,40 +31,24 @@ final readonly class MarkdownFormatter
         $delta = $diff->projectPercentageDelta ?? 0.0;
         $baselinePercentage = $diff->baseline->project->percentage;
 
-        if ($delta > 0.0) {
-            $heading = sprintf('### 🟢 Coverage: %.2f%% (+%.2f%%)', $project->percentage, $delta);
-            $subtitle = sprintf(
-                'Up from %.2f%% vs `%s`%s · %d/%d statements',
-                $baselinePercentage,
-                $shortCommit,
-                $behindSuffix,
-                $project->covered,
-                $project->statements,
-            );
-        } elseif ($delta < 0.0) {
-            $heading = sprintf('### 🔴 Coverage: %.2f%% (%.2f%%)', $project->percentage, $delta);
-            $subtitle = sprintf(
-                'Down from %.2f%% vs `%s`%s · %d/%d statements',
-                $baselinePercentage,
-                $shortCommit,
-                $behindSuffix,
-                $project->covered,
-                $project->statements,
-            );
-        } else {
-            $heading = sprintf('### ⚪ Coverage: %.2f%%', $project->percentage);
-            $label = $diff->changedItems === [] ? 'No coverage changes' : 'Unchanged';
-            $subtitle = sprintf(
-                '%s vs `%s`%s · %d/%d statements',
-                $label,
-                $shortCommit,
-                $behindSuffix,
-                $project->covered,
-                $project->statements,
-            );
-        }
+        [$emoji, $deltaSuffix, $leadText] = match (true) {
+            $delta > 0.0 => ['🟢', sprintf(' (+%.2f%%)', $delta), sprintf('Up from %.2f%%', $baselinePercentage)],
+            $delta < 0.0 => ['🔴', sprintf(' (%.2f%%)', $delta), sprintf('Down from %.2f%%', $baselinePercentage)],
+            default => ['⚪', '', $diff->changedItems === [] ? 'No coverage changes' : 'Unchanged'],
+        };
 
-        $lines = [$heading, '', $subtitle];
+        $lines = [
+            sprintf('### %s Coverage: %.2f%%%s', $emoji, $project->percentage, $deltaSuffix),
+            '',
+            sprintf(
+                '%s vs `%s`%s · %d/%d statements',
+                $leadText,
+                $shortCommit,
+                $behindSuffix,
+                $project->covered,
+                $project->statements,
+            ),
+        ];
 
         if ($diff->changedItems === []) {
             return implode("\n", $lines) . "\n";
@@ -116,6 +100,8 @@ final readonly class MarkdownFormatter
 
     private function formatItemRow(ItemDiff $itemDiff): string
     {
+        $escapedName = str_replace('|', '\|', $itemDiff->name);
+
         if ($itemDiff->type === ItemChangeType::Removed) {
             $baseline = $itemDiff->baseline;
             $coverageStr = $baseline !== null ? sprintf('~~%.2f%%~~', $baseline->percentage) : '—';
@@ -123,7 +109,7 @@ final readonly class MarkdownFormatter
 
             return sprintf(
                 '| ~~`%s`~~ | %s | 🗑️ Removed | %s |',
-                $itemDiff->name,
+                $escapedName,
                 $coverageStr,
                 $statementsStr,
             );
@@ -158,7 +144,7 @@ final readonly class MarkdownFormatter
 
         return sprintf(
             '| `%s` | %s | %s | %s |',
-            $itemDiff->name,
+            $escapedName,
             $coverageStr,
             $changeStr,
             $statementsStr,

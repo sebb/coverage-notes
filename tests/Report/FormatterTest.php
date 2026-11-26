@@ -167,4 +167,27 @@ final class FormatterTest extends TestCase
             $previousPos = $pos;
         }
     }
+
+    public function testMarkdownFormatterEscapesPipesInItemNames(): void
+    {
+        $baseline = new CoverageSummary(
+            project: new ItemMetrics(statements: 10, covered: 8),
+            items: [
+                'src/old|file.php' => new ItemMetrics(statements: 10, covered: 8),
+            ],
+        );
+
+        $current = new CoverageSummary(
+            project: new ItemMetrics(statements: 20, covered: 18),
+            items: [
+                'src/foo|bar.php' => new ItemMetrics(statements: 20, covered: 18),
+            ],
+        );
+
+        $diff = (new CoverageDiffer())->diff($current, $baseline, 'abcdef123456');
+        $markdown = (new MarkdownFormatter())->format($diff);
+
+        self::assertStringContainsString('| `src/foo\|bar.php` | 90.00% | 🆕 New | 18/20 |', $markdown);
+        self::assertStringContainsString('| ~~`src/old\|file.php`~~ | ~~80.00%~~ | 🗑️ Removed | ~~8/10~~ |', $markdown);
+    }
 }
