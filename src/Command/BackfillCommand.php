@@ -8,6 +8,7 @@ use RuntimeException;
 use Sebb\CoverageNotes\Coverage\CloverParser;
 use Sebb\CoverageNotes\Git\GitNotesStorage;
 use Sebb\CoverageNotes\Git\HistoryEntry;
+use Symfony\Component\Console\Attribute\Argument;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Attribute\Option;
 use Symfony\Component\Console\Command\Command;
@@ -17,7 +18,7 @@ use Throwable;
 
 #[AsCommand(
     name: 'backfill',
-    description: 'Backfill missing coverage notes on recent commits using a temporary Git worktree.',
+    description: 'Backfill missing coverage notes on recent commits or a commit range using a temporary Git worktree.',
 )]
 final readonly class BackfillCommand
 {
@@ -29,10 +30,12 @@ final readonly class BackfillCommand
 
     public function __invoke(
         OutputInterface $output,
-        #[Option(description: 'Maximum number of recent commits to inspect', shortcut: 'l')]
-        int $limit = 10,
-        #[Option(description: 'Branch or commit reference to inspect', shortcut: 'b')]
-        string $branch = 'HEAD',
+        #[Argument(description: 'Git commit range or reference to inspect (e.g. "v0.1.0..v0.2.0", "main..HEAD")')]
+        ?string $range = null,
+        #[Option(description: 'Maximum number of commits to inspect (defaults to 10 unless a commit range is given)', shortcut: 'l')]
+        ?int $limit = null,
+        #[Option(description: 'Branch or commit reference to inspect (defaults to "HEAD"; cannot be combined with the range argument)', shortcut: 'b')]
+        ?string $branch = null,
         #[Option(description: 'Shell command to generate the Clover XML file in the worktree', shortcut: 'c')]
         string $command = 'XDEBUG_MODE=coverage vendor/bin/phpunit --coverage-clover=coverage.xml',
         #[Option(description: 'Relative path to the Clover XML file generated inside the worktree')]
@@ -48,6 +51,17 @@ final readonly class BackfillCommand
         #[Option(description: 'Push the updated coverage notes ref to the remote repository after backfilling', shortcut: 'p')]
         bool $push = false,
     ): int {
+        if ($range !== null && $branch !== null) {
+            $output->writeln('<error>Cannot specify both a commit range argument and the --branch option.</error>');
+
+            return Command::FAILURE;
+        }
+
+        $target = $range ?? $branch ?? 'HEAD';
+        $effectiveLimit = $limit !== null
+            ? max(1, $limit)
+            : (GitNotesStorage::isCommitRange($target) ? null : GitNotesStorage::DEFAULT_HISTORY_LIMIT);
+
         $storage = $this->storage ?? new GitNotesStorage();
 
         try {
@@ -55,11 +69,17 @@ final readonly class BackfillCommand
                 throw new RuntimeException(sprintf('Failed to synchronize coverage notes from remote "%s".', $remote));
             }
 
-            $entries = $storage->getHistory(max(1, $limit), $branch, $ref, !$force);
+            $entries = $storage->getHistory($effectiveLimit, $target, $ref, !$force);
         } catch (Throwable $e) {
             $output->writeln(sprintf('<error>%s</error>', $e->getMessage()));
 
             return Command::FAILURE;
+        }
+
+        if ($entries === []) {
+            $output->writeln('<comment>No commits found.</comment>');
+
+            return Command::SUCCESS;
         }
 
         $targets = array_reverse(array_values(array_filter(

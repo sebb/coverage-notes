@@ -301,6 +301,103 @@ final class BackfillCommandTest extends TestCase
         $storage->addWorktree($this->tempRootDir . '/bad-worktree', 'nonexistent-commit');
     }
 
+    public function testBackfillsCommitRangeWithoutDefaultLimitAndHandlesEmptyRangeAndConflicts(): void
+    {
+        $storage = new GitNotesStorage($this->tempRepoDir);
+
+        file_put_contents($this->tempRepoDir . '/range-file.txt', "base\n");
+        $this->runGit(['add', 'range-file.txt']);
+        $this->runGit(['commit', '-m', 'Base before range']);
+        $baseSha = $this->runGit(['rev-parse', 'HEAD']);
+        $this->runGit(['tag', 'v0.1.0']);
+
+        // 11th commit back from HEAD (beyond default 10-commit limit) without a coverage note
+        file_put_contents($this->tempRepoDir . '/range-file.txt', "commit-01\n");
+        $this->runGit(['add', 'range-file.txt']);
+        $this->runGit(['commit', '-m', 'Range commit 01 missing note']);
+        $missingSha = $this->runGit(['rev-parse', 'HEAD']);
+
+        $annotatedShas = [];
+        for ($i = 2; $i <= 11; ++$i) {
+            file_put_contents($this->tempRepoDir . '/range-file.txt', sprintf("commit-%02d\n", $i));
+            $this->runGit(['add', 'range-file.txt']);
+            $this->runGit(['commit', '-m', sprintf('Range commit %02d', $i)]);
+            $sha = $this->runGit(['rev-parse', 'HEAD']);
+            $storage->recordNote(new CoverageSummary(new ItemMetrics(20, 18)), $sha);
+            $annotatedShas[$i] = $sha;
+        }
+
+        $fastCmd = <<<'SH'
+        cat <<XML > coverage.xml
+        <?xml version="1.0" encoding="UTF-8"?>
+        <coverage>
+          <project>
+            <file name="$(pwd)/src/Calculator.php">
+              <class name="App\\Service\\Calculator"><metrics statements="20" coveredstatements="20"/></class>
+              <metrics statements="20" coveredstatements="20"/>
+            </file>
+            <metrics statements="20" coveredstatements="20"/>
+          </project>
+        </coverage>
+        XML
+        SH;
+
+        $tester = new CommandTester(new BackfillCommand(storage: $storage));
+
+        $rangeExit = $tester->execute([
+            'range' => 'v0.1.0..HEAD',
+            '--command' => $fastCmd,
+            '--no-fetch' => true,
+        ]);
+        self::assertSame(Command::SUCCESS, $rangeExit);
+        self::assertNull($storage->readNote($baseSha));
+
+        $backfilledNote = $storage->readNote($missingSha);
+        self::assertNotNull($backfilledNote);
+        self::assertSame(100.0, $backfilledNote->project->percentage);
+
+        $preservedNote = $storage->readNote($annotatedShas[11]);
+        self::assertNotNull($preservedNote);
+        self::assertSame(90.0, $preservedNote->project->percentage);
+
+        // Explicit --limit with --force only overwrites the newest commit in the range
+        $limitedForceExit = $tester->execute([
+            'range' => 'v0.1.0..HEAD',
+            '--limit' => '1',
+            '--force' => true,
+            '--command' => $fastCmd,
+            '--no-fetch' => true,
+        ]);
+        self::assertSame(Command::SUCCESS, $limitedForceExit);
+
+        $overwrittenNote = $storage->readNote($annotatedShas[11]);
+        self::assertNotNull($overwrittenNote);
+        self::assertSame(100.0, $overwrittenNote->project->percentage);
+
+        $untouchedNote = $storage->readNote($annotatedShas[10]);
+        self::assertNotNull($untouchedNote);
+        self::assertSame(90.0, $untouchedNote->project->percentage);
+
+        // Empty commit range exits cleanly without attempting to push
+        $emptyExit = $tester->execute([
+            'range' => 'HEAD..HEAD',
+            '--no-fetch' => true,
+            '--push' => true,
+            '--remote' => 'nonexistent-remote',
+        ]);
+        self::assertSame(Command::SUCCESS, $emptyExit);
+        self::assertStringContainsString('No commits found.', $tester->getDisplay());
+
+        // Passing both range and --branch fails clearly
+        $conflictExit = $tester->execute([
+            'range' => 'v0.1.0..HEAD',
+            '--branch' => 'main',
+            '--no-fetch' => true,
+        ]);
+        self::assertSame(Command::FAILURE, $conflictExit);
+        self::assertStringContainsString('Cannot specify both a commit range argument and the --branch option.', $tester->getDisplay());
+    }
+
     /**
      * @param list<string> $args
      */

@@ -13,6 +13,12 @@ use Throwable;
 final readonly class GitNotesStorage
 {
     public const string DEFAULT_NOTES_REF = 'coverage';
+    public const int DEFAULT_HISTORY_LIMIT = 10;
+
+    public static function isCommitRange(string $revision): bool
+    {
+        return str_contains($revision, '..');
+    }
 
     public function __construct(
         private ?string $workingDirectory = null,
@@ -191,23 +197,31 @@ final readonly class GitNotesStorage
      * @return list<HistoryEntry>
      */
     public function getHistory(
-        int $limit = 10,
-        string $branchRef = 'HEAD',
+        ?int $limit = self::DEFAULT_HISTORY_LIMIT,
+        string $revisionRange = 'HEAD',
         string $notesRef = self::DEFAULT_NOTES_REF,
         bool $includeNotes = true,
     ): array {
-        $process = $this->createProcess([
+        $command = [
             'git',
             'log',
-            $branchRef,
-            '-n',
-            (string) max(1, $limit),
             '--format=%H%x09%h%x09%cs%x09%s',
-        ]);
+        ];
+
+        if ($limit !== null) {
+            $command[] = '-n';
+            $command[] = (string) max(1, $limit);
+        }
+
+        $command[] = '--end-of-options';
+        $command[] = $revisionRange;
+        $command[] = '--';
+
+        $process = $this->createProcess($command);
         $process->run();
 
         if (!$process->isSuccessful()) {
-            throw new RuntimeException(sprintf('Failed to read git log for "%s": %s', $branchRef, trim($process->getErrorOutput() ?: $process->getOutput())));
+            throw new RuntimeException(sprintf('Failed to read git log for "%s": %s', $revisionRange, trim($process->getErrorOutput() ?: $process->getOutput())));
         }
 
         $lines = array_filter(
