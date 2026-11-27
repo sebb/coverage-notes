@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Sebb\CoverageNotes\Command;
 
+use Sebb\CoverageNotes\Git\BaselineResolutionStrategy;
 use Sebb\CoverageNotes\Git\GitNotesStorage;
+use Symfony\Component\Console\Attribute\Argument;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Attribute\Option;
 use Symfony\Component\Console\Command\Command;
@@ -14,7 +16,7 @@ use Throwable;
 
 #[AsCommand(
     name: 'history',
-    description: 'Display recent commits alongside their coverage evolution.',
+    description: 'Display recent commits or a commit range alongside their coverage evolution.',
 )]
 final readonly class HistoryCommand
 {
@@ -25,10 +27,12 @@ final readonly class HistoryCommand
 
     public function __invoke(
         OutputInterface $output,
-        #[Option(description: 'Maximum number of recent commits to inspect', shortcut: 'l')]
-        int $limit = 10,
-        #[Option(description: 'Branch or commit reference to inspect', shortcut: 'b')]
-        string $branch = 'HEAD',
+        #[Argument(description: 'Git commit range or reference to inspect (e.g. "v0.1.0..v0.2.0", "main..HEAD")')]
+        ?string $range = null,
+        #[Option(description: 'Maximum number of commits to inspect (defaults to 10 unless a commit range is given)', shortcut: 'l')]
+        ?int $limit = null,
+        #[Option(description: 'Branch or commit reference to inspect (defaults to "HEAD"; cannot be combined with the range argument)', shortcut: 'b')]
+        ?string $branch = null,
         #[Option(description: 'Git notes ref namespace (e.g. "coverage" for refs/notes/coverage)')]
         string $ref = GitNotesStorage::DEFAULT_NOTES_REF,
         #[Option(description: 'Git remote name for fetching notes')]
@@ -36,6 +40,17 @@ final readonly class HistoryCommand
         #[Option(description: 'Fetch coverage notes from the remote before inspecting history')]
         bool $fetch = true,
     ): int {
+        if ($range !== null && $branch !== null) {
+            $output->writeln('<error>Cannot specify both a commit range argument and the --branch option.</error>');
+
+            return Command::FAILURE;
+        }
+
+        $target = $range ?? $branch ?? 'HEAD';
+        $effectiveLimit = $limit !== null
+            ? max(1, $limit)
+            : (GitNotesStorage::isCommitRange($target) ? null : GitNotesStorage::DEFAULT_HISTORY_LIMIT);
+
         $storage = $this->storage ?? new GitNotesStorage();
 
         try {
@@ -43,7 +58,7 @@ final readonly class HistoryCommand
                 $storage->fetchNotes($ref, $remote);
             }
 
-            $entries = $storage->getHistory(max(1, $limit), $branch, $ref);
+            $entries = $storage->getHistory($effectiveLimit, $target, $ref);
         } catch (Throwable $e) {
             $output->writeln(sprintf('<error>%s</error>', $e->getMessage()));
 
@@ -64,15 +79,6 @@ final readonly class HistoryCommand
             $entry = $entries[$i];
             $summary = $entry->summary;
 
-            // Find previous recorded coverage in the list (older commit) to compute delta
-            $previousSummary = null;
-            for ($j = $i + 1; $j < $count; ++$j) {
-                if ($entries[$j]->summary !== null) {
-                    $previousSummary = $entries[$j]->summary;
-                    break;
-                }
-            }
-
             if ($summary === null) {
                 $table->addRow([
                     sprintf('<comment>%s</comment>', $entry->shortSha),
@@ -83,6 +89,23 @@ final readonly class HistoryCommand
                     $entry->subject,
                 ]);
                 continue;
+            }
+
+            // Find previous recorded coverage in the list (older commit) to compute delta
+            $previousSummary = null;
+            for ($j = $i + 1; $j < $count; ++$j) {
+                if ($entries[$j]->summary !== null) {
+                    $previousSummary = $entries[$j]->summary;
+                    break;
+                }
+            }
+
+            if ($previousSummary === null) {
+                $previousSummary = $storage->resolveBaseline(
+                    sprintf('%s^1', $entry->commitSha),
+                    BaselineResolutionStrategy::Direct,
+                    $ref,
+                )?->summary;
             }
 
             $deltaStr = '<fg=gray>-</>';

@@ -155,15 +155,20 @@ Up from 80.00% vs `a1b2c3d` · 85/100 statements
 
 ### `history`
 
-Inspect recent commits along with their coverage evolution:
+Inspect recent commits or a Git commit range along with their coverage evolution (the oldest displayed commit with coverage computes its delta against the nearest preceding coverage note):
 
 ```bash
 bin/coverage-notes history --limit=10
+bin/coverage-notes history v0.1.0..v0.2.0
+bin/coverage-notes history main..HEAD
 ```
 
+Arguments:
+- `[<range>]` — Optional Git commit range or reference to inspect (e.g. `v0.1.0..v0.2.0`, `main..HEAD`; cannot be combined with `--branch`)
+
 Options:
-- `-l, --limit=LIMIT` — Number of recent commits to display (default: `10`)
-- `-b, --branch=BRANCH` — Branch or commit ref to inspect (default: `HEAD`)
+- `-l, --limit=LIMIT` — Maximum number of commits to display (default: `10` for single refs, unlimited when a commit range is given)
+- `-b, --branch=BRANCH` — Branch or commit ref to inspect (default: `HEAD`; cannot be combined with `<range>`)
 - `--ref=REF` — Git notes ref namespace (default: `coverage`)
 - `--remote=REMOTE` — Git remote name (default: `origin`)
 - `--fetch` / `--no-fetch` — Fetch remote notes before reading history (default: `--fetch`)
@@ -177,15 +182,19 @@ git log --show-notes=coverage -n 5
 
 ### `backfill`
 
-Populate missing coverage notes on recent commits by checking out each commit in a temporary `git worktree` (without touching your working directory):
+Populate missing coverage notes on recent commits or a commit range by checking out each commit in a temporary `git worktree` (without touching your working directory):
 
 ```bash
 bin/coverage-notes backfill --limit=10 --push
+bin/coverage-notes backfill v0.1.0..v0.2.0 --push
 ```
 
+Arguments:
+- `[<range>]` — Optional Git commit range or reference to inspect (e.g. `v0.1.0..v0.2.0`, `main..HEAD`; cannot be combined with `--branch`)
+
 Options:
-- `-l, --limit=LIMIT` — Maximum number of recent commits to inspect (default: `10`)
-- `-b, --branch=BRANCH` — Branch or commit reference to inspect (default: `HEAD`)
+- `-l, --limit=LIMIT` — Maximum number of commits to inspect (default: `10` for single refs, unlimited when a commit range is given)
+- `-b, --branch=BRANCH` — Branch or commit reference to inspect (default: `HEAD`; cannot be combined with `<range>`)
 - `-c, --command=COMMAND` — Shell command to generate the Clover XML file in the worktree (default: `XDEBUG_MODE=coverage vendor/bin/phpunit --coverage-clover=coverage.xml`)
 - `--clover-file=CLOVER-FILE` — Relative path to the Clover XML file generated inside the worktree (default: `coverage.xml`)
 - `-f, --force` — Recompute and overwrite commits that already have a coverage note
